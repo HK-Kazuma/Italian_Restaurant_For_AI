@@ -75,8 +75,8 @@ export const DEFAULT_CONFIG: GameConfig = {
   cornSoupStackMax: 5,
   carbonaraStackMax: 3,
 
-  ovenUpperTime: 30, // テスト用の仮の値（本番は 40秒）
-  ovenLowerTime: 60, // テスト用の仮の値（本番は 80秒）。上段2周分と同じ時間にしてある（ドリアはこの時間で焼き上がる）
+  ovenUpperTime: 30, // 標準の値（5分のゲームに合わせた長さ。40秒は将来のリアルモード用）
+  ovenLowerTime: 60, // 標準の値（80秒は将来のリアルモード用）。必ず上段の2倍にする（上段2周 = 下段1周。ドリアはこの時間で焼き上がる）
 
   ihBurnerCount: 4,
   potCount: 5,

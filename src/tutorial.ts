@@ -2,12 +2,14 @@ import { BOTTLE_ACTION, BOTTLE_FRIDGE_ITEM, BOTTLE_PLATE, isFridgeBottle } from 
 import type { GameConfig } from './config';
 import { FRIDGE_ITEM_IDS } from './fridge';
 import { INGREDIENTS } from './ingredients';
-import { BOTTLE_HOME, FREE_TRAY_HOME } from './layout';
+import { BOTTLE_HOME, FREE_TRAY_HOME, OVEN_STOCK_NAME, PIZZA_PLATE_GUIDE } from './layout';
+import { OVEN_DECKS, OVEN_DECK_NAME, bakeTime, isEmerged, laneOfOffset, timeToEmerge } from './oven';
+import { MOZZ_PER_BALL, MOZZ_TOTAL, PIZZA_TOPPING_NAME, pizzaOf } from './pizza';
 import { warmTime } from './pack';
 import { isNoodle } from './pot';
 import { getMenu, type MenuItem } from './recipe';
 import { TRAY_FRIDGE_ITEM, TRAY_NAME, TRAY_ZONE, freeTraySpots, isFreeTray } from './tray';
-import type { BottleId, FridgeBottleId, FridgeItemId, FridgeUnit, GameState, IngredientId, NoodleKind, Pot, SurfaceId, Target, TrayId } from './types';
+import type { BakeStyle, BottleId, FridgeBottleId, FridgeItemId, FridgeUnit, GameState, IngredientId, NoodleKind, OvenDeck, OvenDish, PizzaBuild, PizzaTopping, Pot, SurfaceId, Target, TrayId } from './types';
 
 // チュートリアル：練習キッチンで、選んだメニューを「次はここ」と案内されながら作る。
 //
@@ -24,8 +26,10 @@ import type { BottleId, FridgeBottleId, FridgeItemId, FridgeUnit, GameState, Ing
 
 // 台の上の位置を指す（ボトルを元の場所に戻すときなど、設備がない場所）
 export type GuideSpot = { kind: 'surfaceSpot'; surface: SurfaceId; x: number; z: number };
+// オーブンの入口のベルト（段だけ指す。置く位置は問わない）
+export type GuideInlet = { kind: 'ovenInlet'; deck: OvenDeck };
 // 矢印の指す先。Target は一部の項目だけ書いてよい（書かなかった項目は問わない。例：{ kind: 'stock', id: 'cheese' }）
-export type GuideAt = Target | GuideSpot;
+export type GuideAt = Target | GuideSpot | GuideInlet;
 
 export type TutorialStep = {
   label: string;
@@ -86,6 +90,38 @@ function allPlates(s: GameState): IngredientId[][] {
 const count = (list: readonly IngredientId[], id: IngredientId) => list.filter((x) => x === id).length;
 const plateHasAny = (s: GameState, ids: readonly IngredientId[]) => allPlates(s).some((p) => p.some((id) => ids.includes(id)));
 const noodleIds: readonly IngredientId[] = ['noodle', 'penne'];
+
+// --- 焼き物（クック）の状態の読み取り ---
+
+// ベルトに乗っている、その種類の焼き皿（最初に見つかったもの）と、その段。なければ null
+function dishOnBelt(s: GameState, style: BakeStyle): { deck: OvenDeck; dish: OvenDish } | null {
+  for (const deck of OVEN_DECKS) {
+    const dish = s.oven.decks[deck].find((d) => d.style === style);
+    if (dish) return { deck, dish };
+  }
+  return null;
+}
+
+// 手に持っている焼き皿（その種類のもの）。なければ null
+const handDish = (s: GameState, style: BakeStyle) => (s.hand?.kind === 'bakeDish' && s.hand.style === style ? s.hand : null);
+
+// 組み立て中・焼いている途中・焼き上がったピザの中身の一覧（組み立て台・手・ベルト・台の上のお皿・手に持ったお皿）
+function pizzaBuilds(s: GameState): PizzaBuild[] {
+  const list: PizzaBuild[] = [];
+  for (const d of s.pizzaSlots) if (d) list.push(pizzaOf(d));
+  const hand = handDish(s, 'pizza');
+  if (hand) list.push(pizzaOf(hand));
+  for (const deck of OVEN_DECKS) for (const d of s.oven.decks[deck]) if (d.style === 'pizza' && d.pizza) list.push(d.pizza);
+  for (const p of s.pizzaPlates) if (p.dish) list.push(p.dish.pizza);
+  if (s.hand?.kind === 'pizzaPlate' && s.hand.dish) list.push(s.hand.dish.pizza);
+  return list;
+}
+
+// 焼き上がったピザが、もうお皿に入っているか（台の上のお皿、または手に持ったお皿）
+const pizzaInPlate = (s: GameState) => s.pizzaPlates.some((p) => p.dish !== null) || (s.hand?.kind === 'pizzaPlate' && s.hand.dish !== undefined);
+
+// その具が、もうのっているか（モッツァレラは全部のせ終わったか）
+const hasTopping = (p: PizzaBuild, id: PizzaTopping) => (id === 'sauce' ? p.sauce : id === 'cheese' ? p.cheese : p.mozz >= MOZZ_TOTAL);
 
 // 鍋が載っているIHの口（なければ -1）
 const burnerWithPot = (s: GameState) => s.ihBurners.findIndex((p) => p !== null);
@@ -446,7 +482,182 @@ function makeKit(menu: MenuItem, cfg: GameConfig) {
     hint: (s) => (s.mistakes > 0 ? '中身が伝票と違います… iPad のチュートリアルから、最初からやり直せます' : null),
   });
 
+  // --- 焼き物（ジェットオーブン）---
+
+  // 出口の、その焼き皿が出てくるレーン（矢印が指す先）
+  const outletOf = (deck: OvenDeck, dish: OvenDish | undefined): Target => ({ kind: 'ovenOutlet', deck, lane: dish ? laneOfOffset(dish.x) : 1 });
+  const handBusy = (s: GameState) => (s.hand ? '手がふさがっています（置くか、右クリックで捨てる）' : null);
+
+  // 具材台の焼き皿の山から1枚取って、オーブンの段に流す（ドリアスタック）
+  const stockToOven = (style: BakeStyle, deck: OvenDeck) =>
+    carry({
+      label: `${OVEN_STOCK_NAME[style]}から皿を取って、オーブンの${OVEN_DECK_NAME[deck]}に流す`,
+      from: () => ({ kind: 'ovenStock', style }),
+      holding: (s) => {
+        const d = handDish(s, style);
+        return d !== null && (d.state === 'raw' || d.state === 'half');
+      },
+      to: () => ({ kind: 'ovenInlet', deck }),
+      done: (s) => dishOnBelt(s, style) !== null || (handDish(s, style)?.cooked ?? 0) > 0 || served(s),
+    });
+
+  // 流した皿が焼き上がって、出口に出てくるまで待つ。beyond = もう出口から先の工程まで進んでいるか
+  const waitBake = (style: BakeStyle, deck: OvenDeck, beyond: (s: GameState) => boolean = () => false): TutorialStep => ({
+    label: `焼き上がって、出口に出てくるまで待つ（${OVEN_DECK_NAME[deck]} ${bakeTime(deck, cfg)}秒）`,
+    at: (s) => outletOf(deck, s.oven.decks[deck].find((d) => d.style === style)),
+    done: (s) =>
+      s.oven.decks[deck].some((d) => d.style === style && isEmerged(d)) ||
+      (handDish(s, style)?.cooked ?? 0) > 0 ||
+      beyond(s) ||
+      served(s),
+    hint: (s) => {
+      const dish = s.oven.decks[deck].find((d) => d.style === style);
+      return dish ? `焼いている… あと${Math.ceil(timeToEmerge(deck, style, dish.s, cfg))}秒` : null;
+    },
+  });
+
+  // 下駄を取って、出口に出てきた焼き上がりのドリアに乗せる（ドリアを先に取った場合は、下駄の山をクリックして乗せる）
+  const getaOnDish = (deck: OvenDeck): TutorialStep => {
+    const withGeta = (s: GameState) => handDish(s, 'doria')?.geta === true;
+    const bakedInHand = (s: GameState) => handDish(s, 'doria')?.state === 'baked';
+    return {
+      label: '下駄を取って、出てきたドリアに乗せる',
+      at: (s) => {
+        if (s.hand?.kind === 'geta') return outletOf(deck, s.oven.decks[deck].find((d) => d.style === 'doria'));
+        return { kind: 'getaStack' };
+      },
+      done: (s) => withGeta(s) || served(s),
+      hint: (s) => {
+        if (s.hand?.kind === 'geta') return '出口のドリアを左クリックで、下駄に乗せて取る';
+        if (bakedInHand(s)) return '下駄の山を左クリックで、ドリアを下駄に乗せる';
+        return handBusy(s) ?? '提供台の左の下駄の山から、下駄を1枚取る';
+      },
+    };
+  };
+
+  // ピザのお皿を取って、台の上に置いておく（焼き上がったピザを入れる）
+  const pizzaPlateToTable = carry({
+    label: 'ピザのお皿を取って、台の上に置く',
+    from: () => ({ kind: 'pizzaPlateStack' }),
+    holding: (s) => s.hand?.kind === 'pizzaPlate' && !s.hand.dish,
+    to: () => ({ kind: 'surfaceSpot', ...PIZZA_PLATE_GUIDE }),
+    done: (s) => s.pizzaPlates.length > 0 || pizzaInPlate(s) || served(s),
+    hint: (_s, holding) => (holding ? '提供台の左の台の、あいている場所を左クリックで置く' : null),
+  });
+
+  // 生地をのせていない鉄板を除いた、組み立て台の鉄板の番号（なければ 0）
+  const doughSlot = (s: GameState) => Math.max(0, s.pizzaSlots.findIndex((d) => d !== null && pizzaOf(d).dough));
+  // 焼く前の鉄板が、もう組み立て台から先（ベルト・焼き上がり・お皿）へ進んでいるか
+  const pizzaPastSlot = (s: GameState) =>
+    dishOnBelt(s, 'pizza') !== null || (handDish(s, 'pizza')?.cooked ?? 0) > 0 || pizzaInPlate(s) || served(s);
+
+  // ピザ生地を取り、鉄板のスタックで鉄板にのせて、組み立て台に置く
+  const doughPanToSlot: TutorialStep = {
+    label: 'ピザ生地を取り、鉄板にのせて、組み立て台に置く',
+    at: (s) => {
+      if (s.hand?.kind === 'pizzaDough') return { kind: 'pizzaPanStack' };
+      const d = handDish(s, 'pizza');
+      if (d && d.state === 'raw' && pizzaOf(d).dough) return { kind: 'pizzaSlot', index: Math.max(0, s.pizzaSlots.findIndex((x) => x === null)) };
+      return { kind: 'pizzaDoughStack' };
+    },
+    done: (s) => s.pizzaSlots.some((d) => d !== null && pizzaOf(d).dough) || pizzaPastSlot(s),
+    hint: (s) => {
+      if (s.hand?.kind === 'pizzaDough') return 'ピザの鉄板のスタックを左クリックで、生地を鉄板にのせる';
+      const d = handDish(s, 'pizza');
+      if (d && pizzaOf(d).dough) return '組み立て台に置く';
+      return handBusy(s);
+    },
+  };
+
+  // 具を取って、組み立て台の鉄板にのせる（モッツァレラは、全部のせ終わるまで）
+  const pizzaTopping = (id: PizzaTopping) => {
+    const balls = id === 'mozzarella' ? MOZZ_TOTAL / MOZZ_PER_BALL : 1;
+    const doneOn = (s: GameState) => pizzaBuilds(s).some((p) => hasTopping(p, id));
+    return carry({
+      label: balls > 1 ? `${PIZZA_TOPPING_NAME[id]}を${balls}個、鉄板にのせる` : `${PIZZA_TOPPING_NAME[id]}を取って、鉄板にのせる`,
+      from: () => ({ kind: 'pizzaSource', id }),
+      holding: (s) => s.hand?.kind === 'pizzaTopping' && s.hand.id === id,
+      to: (s) => ({ kind: 'pizzaSlot', index: doughSlot(s) }),
+      done: (s) => doneOn(s) || pizzaPastSlot(s),
+      progress: (s) => {
+        if (balls <= 1) return null;
+        const most = Math.max(0, ...pizzaBuilds(s).map((p) => p.mozz));
+        return `${Math.min(balls, Math.floor(most / MOZZ_PER_BALL))}/${balls}`;
+      },
+    });
+  };
+
+  // 組み立てた鉄板を持ち上げて、オーブンの段に流す
+  const pizzaToOven = (deck: OvenDeck) =>
+    carry({
+      label: `鉄板を持ち上げて、オーブンの${OVEN_DECK_NAME[deck]}に流す`,
+      from: (s) => ({ kind: 'pizzaSlot', index: doughSlot(s) }),
+      holding: (s) => {
+        const d = handDish(s, 'pizza');
+        return d !== null && d.state === 'raw' && pizzaOf(d).dough;
+      },
+      to: () => ({ kind: 'ovenInlet', deck }),
+      done: pizzaPastSlot,
+    });
+
+  // 焼き上がったピザを出口から取って、台の上のお皿に入れる
+  const bakedToPlate = (deck: OvenDeck) =>
+    carry({
+      label: '焼き上がったピザを出口から取って、お皿に入れる',
+      from: (s) => outletOf(deck, s.oven.decks[deck].find((d) => d.style === 'pizza')),
+      holding: (s) => handDish(s, 'pizza')?.state === 'baked',
+      to: (s) => {
+        const plate = s.pizzaPlates.find((p) => p.dish === null);
+        return plate ? { kind: 'pizzaPlate', id: plate.id } : { kind: 'pizzaPlateStack' };
+      },
+      done: (s) => pizzaInPlate(s) || served(s),
+    });
+
+  // ピザをお皿に移したあとの空の鉄板を、鉄板のスタックに戻す（手を空けて、お皿を持てるように）
+  const isEmptyPanInHand = (s: GameState) => {
+    const d = handDish(s, 'pizza');
+    return d !== null && d.state === 'raw' && !pizzaOf(d).dough;
+  };
+  const panBack = carry({
+    label: '空いた鉄板を、鉄板のスタックに戻す',
+    from: () => ({ kind: 'pizzaPanStack' }),
+    holding: isEmptyPanInHand,
+    to: () => ({ kind: 'pizzaPanStack' }),
+    done: (s) => (pizzaInPlate(s) && !isEmptyPanInHand(s)) || served(s),
+  });
+
+  // 完成した焼き物を、提供台に出す。from = 手が空のとき、取りに行く先（なければ、手に持っているはず）
+  const serveBaked = (holding: (s: GameState) => boolean, from: (s: GameState) => GuideAt | null = () => null) =>
+    carry({
+      label: '完成した料理を、提供台に出す',
+      from,
+      holding,
+      to: () => ({ kind: 'servePass' }),
+      done: served,
+      hint: (s) => (s.mistakes > 0 ? '伝票にない料理を出しました… iPad のチュートリアルから、最初からやり直せます' : null),
+    });
+  const servePizza = serveBaked(
+    (s) => s.hand?.kind === 'pizzaPlate' && s.hand.dish !== undefined,
+    (s) => {
+      const plate = s.pizzaPlates.find((p) => p.dish !== null);
+      return plate ? { kind: 'pizzaPlate', id: plate.id } : null;
+    },
+  );
+  const serveDoria = serveBaked((s) => handDish(s, 'doria')?.geta === true, () => ({ kind: 'getaStack' }));
+
   return {
+    stockToOven,
+    waitBake,
+    getaOnDish,
+    pizzaPlateToTable,
+    doughPanToSlot,
+    pizzaTopping,
+    pizzaToOven,
+    bakedToPlate,
+    panBack,
+    servePizza,
+    serveDoria,
+    pizzaInPlate,
     openFridge,
     noodleToBasket,
     press,
@@ -687,6 +898,21 @@ const RECIPES: Record<string, (k: Kit) => TutorialStep[]> = {
     k.warmUp('cornSoup'),
     k.warmPackTo('cornSoup', 'bowl'),
     k.serve,
+  ],
+  // ドリアは下段（上段2周ぶんの時間）で焼き上がる。焼いている間に、下駄を用意する
+  milanoDoria: (k) => [k.stockToOven('doria', 'lower'), k.waitBake('doria', 'lower'), k.getaOnDish('lower'), k.serveDoria],
+  // ピザは上段の1周で焼き上がる。先にお皿を台に置いておき、焼き上がったら入れる
+  buffaloPizza: (k) => [
+    k.pizzaPlateToTable,
+    k.doughPanToSlot,
+    k.pizzaTopping('sauce'),
+    k.pizzaTopping('cheese'),
+    k.pizzaTopping('mozzarella'),
+    k.pizzaToOven('upper'),
+    k.waitBake('pizza', 'upper', k.pizzaInPlate),
+    k.bakedToPlate('upper'),
+    k.panBack,
+    k.servePizza,
   ],
 };
 

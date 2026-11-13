@@ -260,7 +260,8 @@ describe('ピザを組み立てる（Game）', () => {
     expect(g.getaHint({ kind: 'servePass' })).toContain('焦げて');
   });
 
-  it('焼き上がったバッファローピザは、お皿に入れてから、提供台に出せる（ピザのメニューがないので採点なし）', () => {
+  // 深化設計書4.4でピザのメニューができた（採点あり）。伝票にないピザを出すと、注文ミスになる
+  it('焼き上がったバッファローピザは、お皿に入れてから、提供台に出せる（ピザの伝票がなければ注文ミス）', () => {
     const g = newGame();
     const plate = putPlate(g);
     makeBuffalo(g);
@@ -279,8 +280,8 @@ describe('ピザを組み立てる（Game）', () => {
     expect(g.planInteract({ kind: 'servePass' })).not.toBeNull();
     g.interact({ kind: 'servePass' });
     expect(g.state.hand).toBeNull();
-    expect(g.state.score).toBe(before.score);
-    expect(g.state.mistakes).toBe(before.mistakes);
+    expect(g.state.score).toBe(before.score); // 0点から −30 しても 0点のまま
+    expect(g.state.mistakes).toBe(before.mistakes + 1);
   });
 
   it('モッツァレラが足りないピザは、焼けてお皿に入れても、提供できない', () => {

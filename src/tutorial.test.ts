@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CONFIG as cfg } from './config';
 import { Game } from './game';
+import { PIZZA_PLATE_GUIDE } from './layout';
+import { frontS } from './oven';
 import { MENU } from './recipe';
 import { hasTutorial, matchesTarget, tutorialSteps, type GuideAt } from './tutorial';
 import type { Target, TrayId } from './types';
@@ -30,6 +32,16 @@ const fridgeTray = (id: TrayId): Target => ({ kind: 'fridgeTray', id });
 // 小エビ・チキン・パンチェッタ・イカ・きのこのトレーとソテーソースのケースを置く、トッピングの置き場（spot 番目）
 const topping = (spot: number): Target => ({ kind: 'traySlot', id: 'topping', spot });
 const table = (x: number, z: number, surface: 'salad' | 'left' | 'hotWater'): Target => ({ kind: 'tableTop', surface, x, z });
+
+// クック（ジェットオーブン・ピザ）の設備
+const doriaStock: Target = { kind: 'ovenStock', style: 'doria' };
+const getaStack: Target = { kind: 'getaStack' };
+const pizzaPlateStack: Target = { kind: 'pizzaPlateStack' };
+const pizzaDoughStack: Target = { kind: 'pizzaDoughStack' };
+const pizzaPanStack: Target = { kind: 'pizzaPanStack' };
+const pizzaSlot = (index: number): Target => ({ kind: 'pizzaSlot', index });
+const pizzaSource = (id: 'sauce' | 'cheese' | 'mozzarella'): Target => ({ kind: 'pizzaSource', id });
+const pizzaPlate = (id: number): Target => ({ kind: 'pizzaPlate', id });
 
 // 台本の1手：左クリック / 右クリック / 時間を進める / 矢印が指さない場所への左クリック（ボトルを台に置くなど）
 type Act = Target | { right: Target } | { wait: number } | { free: Target };
@@ -157,6 +169,21 @@ const SCRIPTS: Record<string, Act[]> = {
   cornSoup: [
     { right: fridgeDoor }, fridgeStock('cornSoup'), hotWater(0), bowlStack, saladSlot(0),
     wait(cfg.cornSoupWarmTime + 0.1), hotWater(0), saladSlot(0), saladSlot(0), pass,
+  ],
+  // クック：ドリアスタック → 下段 → 焼き上がりを待つ → 下駄を取って出口のドリアに乗せる → 提供
+  milanoDoria: [
+    doriaStock, { kind: 'ovenInlet', deck: 'lower', x: 0, s: frontS('doria') }, wait(cfg.ovenLowerTime + 1),
+    getaStack, { kind: 'ovenOutlet', deck: 'lower', lane: 1 }, pass,
+  ],
+  // クック：お皿を台に置く → 生地・鉄板 → ソース・チーズ・モッツァレラ2個 → 上段 → 出口から取ってお皿へ → 鉄板を戻す → お皿ごと提供
+  buffaloPizza: [
+    pizzaPlateStack, { free: table(PIZZA_PLATE_GUIDE.x, PIZZA_PLATE_GUIDE.z, 'left') },
+    pizzaDoughStack, pizzaPanStack, pizzaSlot(0),
+    pizzaSource('sauce'), pizzaSlot(0), pizzaSource('cheese'), pizzaSlot(0),
+    pizzaSource('mozzarella'), pizzaSlot(0), pizzaSource('mozzarella'), pizzaSlot(0),
+    pizzaSlot(0), { kind: 'ovenInlet', deck: 'upper', x: 0, s: frontS('pizza') }, wait(cfg.ovenUpperTime + 1),
+    { kind: 'ovenOutlet', deck: 'upper', lane: 0 }, // ピザ系は、ベルトの左右2つの置き場の左（レーン0 の側）に流れる
+    pizzaPlate(1), pizzaPanStack, pizzaPlate(1), pass,
   ],
 };
 

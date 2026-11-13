@@ -1,4 +1,5 @@
-import type { Difficulty } from './difficulty';
+import { DIFFICULTIES } from './difficulty';
+import { POSITIONS, rankingBoard } from './position';
 import { loadFirestore, readFirebaseConfig, withTimeout, type FirebaseConfig } from './firebase';
 
 // みんなで共有するランキング。保存先（いまは Firebase Firestore）はこのファイルの中だけに置く。
@@ -28,10 +29,14 @@ export function describeSubmitError(e: unknown): string {
 
 export type RankingEntry = { name: string; score: number };
 
+// board = 保存先の名前（position.ts の rankingBoard。ヒートは難易度の名前そのまま、クック・通しは後ろに -cook・-all）
 export type RankingBackend = {
-  submit(difficulty: Difficulty, entry: RankingEntry): Promise<void>;
-  top(difficulty: Difficulty, limit: number): Promise<RankingEntry[]>;
+  submit(board: string, entry: RankingEntry): Promise<void>;
+  top(board: string, limit: number): Promise<RankingEntry[]>;
 };
+
+// 読み書きできる保存先の一覧（3難易度 × 3ポジション）。firestore.rules の一覧と同じにする
+export const RANKING_BOARDS: readonly string[] = DIFFICULTIES.flatMap((d) => POSITIONS.map((p) => rankingBoard(d.id, p.id)));
 
 // 名前を整える：前後の空白と制御文字を取り、長すぎれば切る。空ならゲスト
 export function cleanName(raw: string): string {
@@ -43,23 +48,23 @@ export function validScore(score: number): boolean {
   return Number.isInteger(score) && score > 0 && score <= SCORE_MAX;
 }
 
-// Firestore：rankings/{難易度}/scores/{自動ID} に { name, score, createdAt } を1件ずつ足す
+// Firestore：rankings/{保存先}/scores/{自動ID} に { name, score, createdAt } を1件ずつ足す
 function createFirebaseBackend(config: FirebaseConfig): RankingBackend {
   const db = loadFirestore(config);
 
   return {
-    async submit(difficulty, entry) {
+    async submit(board, entry) {
       const { fs, db: d } = await db;
-      await fs.addDoc(fs.collection(d, 'rankings', difficulty, 'scores'), {
+      await fs.addDoc(fs.collection(d, 'rankings', board, 'scores'), {
         name: entry.name,
         score: entry.score,
         createdAt: fs.serverTimestamp(),
       });
     },
-    async top(difficulty, limit) {
+    async top(board, limit) {
       const { fs, db: d } = await db;
       const snap = await fs.getDocs(
-        fs.query(fs.collection(d, 'rankings', difficulty, 'scores'), fs.orderBy('score', 'desc'), fs.limit(limit)),
+        fs.query(fs.collection(d, 'rankings', board, 'scores'), fs.orderBy('score', 'desc'), fs.limit(limit)),
       );
       return snap.docs.map((doc) => ({ name: String(doc.get('name') ?? ''), score: Number(doc.get('score') ?? 0) }));
     },
@@ -73,14 +78,14 @@ export const ranking = {
   // 保存先につながる設定が入っているか（なければ、ランキングは「準備中」）
   enabled: backend !== null,
 
-  async submit(difficulty: Difficulty, rawName: string, score: number): Promise<void> {
+  async submit(board: string, rawName: string, score: number): Promise<void> {
     if (!backend) throw new Error('ランキングは準備中です');
     if (!validScore(score)) throw new Error('このスコアは登録できません');
-    await withTimeout(backend.submit(difficulty, { name: cleanName(rawName), score }), SUBMIT_TIMEOUT_MS);
+    await withTimeout(backend.submit(board, { name: cleanName(rawName), score }), SUBMIT_TIMEOUT_MS);
   },
 
-  async top(difficulty: Difficulty): Promise<RankingEntry[]> {
+  async top(board: string): Promise<RankingEntry[]> {
     if (!backend) return [];
-    return backend.top(difficulty, TOP_LIMIT);
+    return backend.top(board, TOP_LIMIT);
   },
 };

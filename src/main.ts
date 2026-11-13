@@ -8,6 +8,7 @@ import { Input } from './input';
 import { Interactor } from './interaction';
 import { Player } from './player';
 import { loadTutorialCleared, saveTutorialCleared } from './mission';
+import { rankingBoard } from './position';
 import { createKitchen } from './scene';
 import { loadSettings, lookScale, saveSettings } from './settings';
 import { TRAY_ZONE, isFreeTray, trayContentName } from './tray';
@@ -24,17 +25,18 @@ function loadBest(): number {
     return 0;
   }
 }
-// 難易度ごとの自己ベスト（ランキングに登録できるか、の判断に使う。全体のハイスコアとは別）
-function loadBestOf(difficulty: string): number {
+// 保存先（難易度 × ポジション。position.ts の rankingBoard）ごとの自己ベスト（ランキングに登録できるか、の判断に使う。全体のハイスコアとは別）。
+// ヒートは今までどおり「best:難易度」、クック・通しは「best:難易度-cook」「best:難易度-all」
+function loadBestOf(board: string): number {
   try {
-    return Number(localStorage.getItem(`${BEST_KEY}:${difficulty}`)) || 0;
+    return Number(localStorage.getItem(`${BEST_KEY}:${board}`)) || 0;
   } catch {
     return 0;
   }
 }
-function saveBestOf(difficulty: string, score: number): void {
+function saveBestOf(board: string, score: number): void {
   try {
-    localStorage.setItem(`${BEST_KEY}:${difficulty}`, String(score));
+    localStorage.setItem(`${BEST_KEY}:${board}`, String(score));
   } catch {
     // 保存できなくても遊べる
   }
@@ -102,7 +104,7 @@ const hud = new Hud(
       player.lookScale = lookScale(settings);
       saveSettings(settings);
     } else if (action.type === 'start') {
-      game.getReady(action.difficulty);
+      game.getReady(action.difficulty, action.position);
       player.reset();
       interactor.clear();
     } else if (action.type === 'tutorial') {
@@ -249,11 +251,12 @@ function frame(): void {
       best = game.state.score;
       saveBest(best);
     }
-    // その難易度の自己ベストなら、結果画面から名前をつけてランキングに登録できる
-    const { difficulty, score } = game.state;
-    if (difficulty && score > 0 && score > loadBestOf(difficulty)) {
-      saveBestOf(difficulty, score);
-      hud.offerRanking({ difficulty, score });
+    // その難易度・ポジションの自己ベストなら、結果画面から名前をつけてランキングに登録できる
+    const { difficulty, position, score } = game.state;
+    const board = difficulty ? rankingBoard(difficulty, position) : null;
+    if (difficulty && board && score > 0 && score > loadBestOf(board)) {
+      saveBestOf(board, score);
+      hud.offerRanking({ difficulty, position, score });
     } else {
       hud.offerRanking(null);
     }
