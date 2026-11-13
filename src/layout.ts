@@ -1,4 +1,4 @@
-import type { BakeStyle, BottleId, FreeTrayId, SurfaceId, TableSpot } from './types';
+import type { BakeSeries, BakeStyle, BottleId, FreeTrayId, PlateStyle, SurfaceId, TableSpot } from './types';
 
 // 設備の置き場所。ここの数値を直すと、その設備が動く（保存すると開発サーバーが自動で読み込み直す）。
 //
@@ -127,12 +127,37 @@ export const FREE_TRAY_HOME: Record<FreeTrayId, { surface: SurfaceId; x: number;
 //   壁 | [具材台] → [入口] [オーブン本体] [出口] → [左の台（皿・提供台）]      （左から右へ、+z → -z）
 // 上段と下段の2段。段ごとに、入口から出口まで出てくる時間が違う（config.ts の ovenUpperTime / ovenLowerTime）。
 
-// 焼き皿の大きさ（w = 流れの向き、d = 流れと直角、h = 高さ。m）。
-//   doria（ドリア・鉄板系）：長方形で、長い辺を流れの向きにして横向きに置く。入口・出口には 流れの向きに2つ × 横に3つ並ぶ
-//   pizza（ピザ系）：丸い（直径 0.5）。入口・出口には 流れの向きに2つ × 横に2つ並ぶ
-export const BAKE_DISHES: Record<BakeStyle, { name: string; w: number; d: number; h: number }> = {
-  doria: { name: 'ドリア系', w: 0.42, d: 0.3, h: 0.05 },
-  pizza: { name: 'ピザ系', w: 0.5, d: 0.5, h: 0.03 },
+// 器の寸法の系統（w = 流れの向き、d = 流れと直角。m）。器の寸法は、この2通りだけ（新しい器は、必ずどちらかを使う）。
+//   three（3列系）：長方形で、長い辺を流れの向きにして横向きに置く。入口・出口には 流れの向きに2つ × 横に3つ並ぶ
+//   two（2列系）：直径 0.5 の丸（または、それに収まる角）。入口・出口には 流れの向きに2つ × 横に2つ並ぶ
+// ベルトのレーン・置き場（oven.ts）は、器の種類ではなく、この系統で決まる
+export const BAKE_SERIES: Record<BakeSeries, { w: number; d: number }> = {
+  three: { w: 0.42, d: 0.3 },
+  two: { w: 0.5, d: 0.5 },
+};
+
+// 焼き皿（器）の大きさ。w, d は系統（BAKE_SERIES）のまま、h = 高さ（山に積むときの1枚の厚みにも使う）。round = 丸い器（置く前の印を丸くする）
+//   doria = ドリア皿（グラタン皿）・pizza = ピザの鉄板は既存。ほかはクック編設計書 4.2 の表（「仮」の系統は、ここを直すだけで変えられる）
+const dishOf = (name: string, series: BakeSeries, h: number, round = false) => ({ name, series, ...BAKE_SERIES[series], h, ...(round ? { round } : {}) });
+export const BAKE_DISHES: Record<BakeStyle, { name: string; series: BakeSeries; w: number; d: number; h: number; round?: boolean }> = {
+  doria: dishOf('ドリア系', 'three', 0.05),
+  pizza: dishOf('ピザ系', 'two', 0.03, true),
+  bakingPad: dishOf('焼成パッド', 'three', 0.035),
+  largePad: dishOf('大きめの焼成パッド', 'two', 0.04),
+  hamburgPan: dishOf('ハンバーグの鉄板', 'three', 0.03), // 仮：3列系
+  eggPan: dishOf('目玉焼き鉄板', 'three', 0.03), // 仮：3列系
+  soupBowl: dishOf('鉄のスープ皿', 'three', 0.065), // 仮：3列系
+};
+// 具材台の焼き皿の山の表示名。doria = ドリアスタック（焼く前のドリア。本番でも使う）、pizza = 開発時だけ出す、テスト用のピザ系の皿の山（生地・ソース・チーズがのった状態）。
+// ほかは、棚の空の器の山（vesselStack）
+export const OVEN_STOCK_NAME: Record<BakeStyle, string> = {
+  doria: 'ドリアスタック',
+  pizza: 'ピザ系の皿の山（開発用）',
+  bakingPad: '焼成パッドの山',
+  largePad: '大きめの焼成パッドの山',
+  hamburgPan: 'ハンバーグの鉄板の山',
+  eggPan: '目玉焼き鉄板の山',
+  soupBowl: '鉄のスープ皿の山',
 };
 // ベルトや入口・出口の大きさの基準にする皿（ドリア系）
 export const BAKE_DISH = BAKE_DISHES.doria;
@@ -169,7 +194,7 @@ export const OVEN_Z = {
 export const ROOM_MIN_X = -3.6;
 export const WALL_HALF = 0.05;
 
-// オーブンの入口の先（壁側）の台。ドリア・鉄板焼きの具材を置く具材コーナー（いまは、テスト用の焼き皿だけ）
+// オーブンの入口の先（壁側）の台。ドリア・鉄板焼きの具材を置く具材コーナー（1台目の天板に作業枠、下の棚に器の山）
 // 右の端（部屋の中央側）は左の台・オーブンと同じ列の端（OVEN.x + 左の台の幅/2）のまま、左へ伸ばして左の壁の内側の面に接する
 const OVEN_COUNTER_D = 1.2;
 const OVEN_COUNTER_MAX_X = OVEN.x + SURFACES.left.width / 2; // 右の端（動かさない）
@@ -206,6 +231,35 @@ export const OVEN_COUNTER_SHELF = {
   stackHeight: 5, // 1つの山の皿の枚数
 };
 
+// 棚の山の割り当て（具材台の下、2段 × 2山 × 3台 = 12か所）。counter = 何台目の具材台か（OVEN_COUNTER_ZS の添字）、tier = 段（0 = 下段、1 = 上段）、
+// slot = 段の中の山の番号（0 = オーブン側）。山の中身は、ドリアの山（ovenStock。dish = どの品の山か。label = 棚に出す品名）か、空の器の山（vesselStack）。
+// 書いていない場所は空き。並び順は、チュートリアルの矢印が先に見つける順（ミラノドリアを先頭に置く）
+export type ShelfStack = { counter: number; tier: 0 | 1; slot: number; style: BakeStyle; dish?: string; label: string };
+export const SHELF_STACKS: readonly ShelfStack[] = [
+  // 1台目：ドリア4品の山（焼く前の中身が入った皿）
+  { counter: 0, tier: 1, slot: 0, style: 'doria', dish: 'milanoDoria', label: 'ミラノドリア' },
+  { counter: 0, tier: 1, slot: 1, style: 'doria', dish: 'cheeseMilanoDoria', label: '焼きチーズミラノドリア' },
+  { counter: 0, tier: 0, slot: 0, style: 'doria', dish: 'tarakoDoria', label: 'たらこのドリア' },
+  { counter: 0, tier: 0, slot: 1, style: 'doria', dish: 'tarakoGratin', label: 'たらこのグラタン' },
+  // 2台目：空のドリア皿・焼成パッド・大きめの焼成パッド・鉄のスープ皿
+  { counter: 1, tier: 1, slot: 0, style: 'doria', label: '空のドリア皿' },
+  { counter: 1, tier: 1, slot: 1, style: 'bakingPad', label: '焼成パッド' },
+  { counter: 1, tier: 0, slot: 0, style: 'largePad', label: '大きめの焼成パッド' },
+  { counter: 1, tier: 0, slot: 1, style: 'soupBowl', label: '鉄のスープ皿' },
+  // 3台目：ハンバーグの鉄板・目玉焼き鉄板（下段の2か所は空き）
+  { counter: 2, tier: 1, slot: 0, style: 'hamburgPan', label: 'ハンバーグの鉄板' },
+  { counter: 2, tier: 1, slot: 1, style: 'eggPan', label: '目玉焼き鉄板' },
+];
+// 開発時（npm run dev）だけ出す、テスト用のピザ系の皿の山の置き場（3台目の空き）
+export const DEV_PIZZA_SHELF = { counter: 2, tier: 0 as const, slot: 0 };
+// 棚の山の、具材台の中心からの相対位置（xr: 部屋の中央側、zr: 壁側）。開いている面（+x）の端に寄せる（奥は視点の線が天板に遮られて狙えない）。
+// 器は長い辺を z 方向（オーブンの皿と同じ向き）にして積む
+const SHELF_EDGE = 0.03; // 開いている面の端から、山までのすき間
+export function shelfStackSpot(style: BakeStyle, slot: number): { xr: number; zr: number } {
+  const pitch = OVEN_COUNTER.depth / OVEN_COUNTER_SHELF.stacksPerTier;
+  return { xr: OVEN_COUNTER.width / 2 - BAKE_DISHES[style].d / 2 - SHELF_EDGE, zr: (slot - (OVEN_COUNTER_SHELF.stacksPerTier - 1) / 2) * pitch };
+}
+
 // 2台目の具材台（OVEN_COUNTER_ZS[1]）の天板の上の、ピザの置き場。位置は、その具材台の中心からの相対（xr: 右 = 部屋の中央側、zr: 手前 = 壁側）。天板は x 方向 約1.65m × z 方向 1.2m。
 //   手前（部屋の中央側）に、鉄板を置いて組み立てる場所（組み立て台）を2つ。
 //   その奥（壁側）のまん中の列に、ソース・チーズ・モッツァレラの容器（具材）を z 方向に並べる。ソースは正方形、チーズは長方形で、奥（z 方向）に長い向き。
@@ -216,6 +270,7 @@ export const PIZZA_COUNTER = {
   cheese: { xr: 0.0, zr: 0.0, w: 0.24, d: 0.44 }, // 長方形の容器（ピザチーズ）。z 方向に長い
   mozz: { xr: 0.0, zr: 0.42, w: 0.28, d: 0.28 }, // 上が空いたプラスチックの容器（モッツァレラチーズ）
   slotR: 0.27, // 組み立て台の半径（鉄板 直径 0.5m が収まる）
+  slotSeries: 'two' as BakeSeries, // 組み立て台に置ける器の寸法の系統（ピザの鉄板・大きめの焼成パッド）
   slots: [
     { xr: 0.52, zr: -0.3 },
     { xr: 0.52, zr: 0.3 },
@@ -224,11 +279,55 @@ export const PIZZA_COUNTER = {
   panStack: { xr: -0.56, zr: -0.3 }, // ピザの鉄板のスタック（枚数は config の pizzaPanCount）
 };
 
+// 1台目の具材台（オーブンの入口の隣）の作業枠。部屋の中央側（+x）の縁に、z 方向に3つ並べる。枠は、器の長い辺を左右（x 方向）に向けて置く大きさ。
+// 3列系の器・受け台（下駄・板）・小皿を置いて、盛り付け・ヘラではがす・仕上げをする。位置は具材台の中心からの相対（xr: 右、zr: 手前）。
+//   w = x 方向（長い辺）、d = z 方向。受け台（下駄・板）がそのまま収まる大きさ
+const WORK_FRAME_EDGE = 0.03; // 縁から枠までのすき間
+const WORK_FRAME_GAP = 0.03; // 枠どうしのすき間
+const WORK_FRAME_W = Math.max(GETA.w, 0.52);
+const WORK_FRAME_D = Math.max(GETA.d, 0.36);
+export const WORK_FRAMES = {
+  counter: 0, // 何台目の具材台の上か（OVEN_COUNTER_ZS の添字）
+  series: 'three' as BakeSeries, // 置ける器の寸法の系統（2列系の器は、ピザの組み立て台に置く）
+  plateStyles: ['small'] as readonly PlateStyle[], // 置ける皿の種類（小皿）
+  w: WORK_FRAME_W,
+  d: WORK_FRAME_D,
+  slots: [-1, 0, 1].map((k) => ({ xr: OVEN_COUNTER.width / 2 - WORK_FRAME_EDGE - WORK_FRAME_W / 2, zr: k * (WORK_FRAME_D + WORK_FRAME_GAP) })),
+};
+
+// 木の板（鉄板・スープ皿の受け台）。w = 長い辺、d = 短い辺、h = 厚み。3列系の器より、ひと回り大きい（作業枠に収まる）
+export const BOARD = { w: 0.5, d: 0.34, h: 0.025, stackHeight: 6 };
+
+// 左の台（提供台より壁側のあき地）の、板の山と小皿の山（台の中心からの相対位置）。下駄の山のそばの、ピザのお皿・鉄板の山を置く場所と重ならないところ（小皿 = 下駄の山の右隣、板 = あき地の壁側の端）。
+//   board = 板の山（長い辺を x 方向に積む）、small = 小皿の山（半径 r。ほうれん草のソテーの小皿と同じ物）
+export const COOK_SIDE_STACKS = {
+  board: { surface: 'left' as const, x: -0.42, z: 2.38 },
+  small: { surface: 'left' as const, x: 0.55, z: 1.15, r: 0.14, count: 6 },
+};
+// 左の台の上に、もとから置いてある物（中心の相対位置と、半分の大きさ。r があれば、半径 r の丸）。ボトル・容器・ピザのお皿・下駄の山を重ねて置けない
+export const LEFT_FIXTURES: readonly { x: number; z: number; hx: number; hz: number; r?: number }[] = [
+  { x: COOK_SIDE_STACKS.board.x, z: COOK_SIDE_STACKS.board.z, hx: BOARD.w / 2, hz: BOARD.d / 2 },
+  { x: COOK_SIDE_STACKS.small.x, z: COOK_SIDE_STACKS.small.z, hx: COOK_SIDE_STACKS.small.r, hz: COOK_SIDE_STACKS.small.r, r: COOK_SIDE_STACKS.small.r },
+];
+// 左の台の、もとから置いてある物に、置こうとしている物が重なるか。置く物は、中心 (x, z)・半分の大きさ (hx, hz) の長方形。
+// round = true なら、半径 hx の丸（ピザのお皿・鉄板・ボトル・容器）
+export function overlapsLeftFixture(x: number, z: number, hx: number, hz: number, round = false): boolean {
+  return LEFT_FIXTURES.some((f) => {
+    if (f.r !== undefined && round) return Math.hypot(f.x - x, f.z - z) < f.r + hx; // 丸と丸
+    if (f.r !== undefined) return Math.hypot(Math.max(0, Math.abs(f.x - x) - hx), Math.max(0, Math.abs(f.z - z) - hz)) < f.r; // 丸い物と、置く長方形
+    if (round) return Math.hypot(Math.max(0, Math.abs(f.x - x) - f.hx), Math.max(0, Math.abs(f.z - z) - f.hz)) < hx; // 長方形の物と、置く丸
+    return Math.abs(f.x - x) < f.hx + hx && Math.abs(f.z - z) < f.hz + hz;
+  });
+}
+
 // ピザのお皿・使い終わった鉄板（どちらも直径 0.5m）の半径
 export const PIZZA_PLATE_R = 0.25;
 
 // 提供台の左の、ピザのお皿の山（左の台の中心からの相対位置）。左の台の、提供台より壁側（+z）のあき地にある
 export const PIZZA_PLATE_STACK = { surface: 'left' as const, x: -0.42, z: 1.95, count: 6 };
+
+// チュートリアルで、ピザのお皿を置く場所として指す位置（左の台の、ピザのお皿の山の右のあき地。置ける範囲 PROP_RANGE の中）
+export const PIZZA_PLATE_GUIDE = { surface: 'left' as const, x: 0.25, z: 1.95 };
 
 // ピザのお皿・鉄板（の山）を、台の上に置ける範囲（台の中心からの相対。丸い物の中心の範囲）。
 //   left（左の台）：下駄の山と同じ、提供台より壁側（+z）のあき地に限る（皿・トッピングの置き場に重ならない）
@@ -246,7 +345,7 @@ export const PROP_RANGE_PREP = {
   maxZ: SURFACES.prep.depth / 2 - PIZZA_PLATE_R - 0.03,
 };
 
-// 作業台（prep）の天板に、もとから置いてある物（中心の相対位置と、半分の大きさ）。2台目の具材台のピザの置き場と、1台目のテスト用の焼き皿の山
+// 作業台（prep）の天板に、もとから置いてある物（中心の相対位置と、半分の大きさ）。2台目の具材台のピザの置き場と、1台目の作業枠
 const counterZ = (i: number) => OVEN_COUNTER_ZS[i] - OVEN_COUNTER_ROW.z; // 何台目の具材台の中心か（作業台の中心からの相対）
 const pizzaAtZ = counterZ(PIZZA_COUNTER.counter);
 export const PREP_FIXTURES: readonly { x: number; z: number; hx: number; hz: number }[] = [
@@ -256,9 +355,8 @@ export const PREP_FIXTURES: readonly { x: number; z: number; hx: number; hz: num
   ...PIZZA_COUNTER.slots.map((s) => ({ x: s.xr, z: pizzaAtZ + s.zr, hx: PIZZA_COUNTER.slotR, hz: PIZZA_COUNTER.slotR })),
   { x: PIZZA_COUNTER.doughStack.xr, z: pizzaAtZ + PIZZA_COUNTER.doughStack.zr, hx: 0.215, hz: 0.215 },
   { x: PIZZA_COUNTER.panStack.xr, z: pizzaAtZ + PIZZA_COUNTER.panStack.zr, hx: 0.26, hz: 0.26 },
-  // 1台目の具材台の上の、テスト用の焼き皿の山（ドリア系・ピザ系）
-  { x: OVEN.x - 0.35 - OVEN_COUNTER.x, z: counterZ(0), hx: BAKE_DISHES.doria.d / 2, hz: BAKE_DISHES.doria.w / 2 },
-  { x: OVEN.x + 0.35 - OVEN_COUNTER.x, z: counterZ(0), hx: BAKE_DISHES.pizza.d / 2, hz: BAKE_DISHES.pizza.d / 2 },
+  // 1台目の具材台の作業枠（3つ）
+  ...WORK_FRAMES.slots.map((f) => ({ x: f.xr, z: counterZ(WORK_FRAMES.counter) + f.zr, hx: WORK_FRAMES.w / 2, hz: WORK_FRAMES.d / 2 })),
 ];
 
 // ピザのお皿・鉄板（の山）を置ける台と、その範囲。置けない台（サラダ台・湯煎器の台）は null

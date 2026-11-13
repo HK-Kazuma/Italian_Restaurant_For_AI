@@ -5,10 +5,15 @@ rules_version = '2';
 // 点数の上限は src/ranking.ts の SCORE_MAX、名前の長さは NAME_MAX と同じにする。
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /rankings/{difficulty}/scores/{id} {
-      allow read: if difficulty in ['trial', 'leading', 'associate'];
+    // 保存先は 3難易度 × 3ポジション。ヒートは難易度の名前そのまま（過去の記録を残す）、クック・通しは後ろに -cook・-all（src/position.ts の rankingBoard、src/ranking.ts の RANKING_BOARDS と同じ）
+    match /rankings/{board}/scores/{id} {
+      allow read: if board in ['trial', 'leading', 'associate',
+          'trial-cook', 'leading-cook', 'associate-cook',
+          'trial-all', 'leading-all', 'associate-all'];
 
-      allow create: if difficulty in ['trial', 'leading', 'associate']
+      allow create: if board in ['trial', 'leading', 'associate',
+          'trial-cook', 'leading-cook', 'associate-cook',
+          'trial-all', 'leading-all', 'associate-all']
         && request.resource.data.keys().hasOnly(['name', 'score', 'createdAt'])
         && request.resource.data.name is string
         && request.resource.data.name.size() >= 1

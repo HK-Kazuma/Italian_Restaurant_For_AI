@@ -136,7 +136,8 @@ describe('ドリアを下駄に乗せる', () => {
 });
 
 describe('提供', () => {
-  it('下駄に乗せたドリアは、提供台に出せる（ドリアのメニューがないので、採点はなし）', () => {
+  // 深化設計書4.4でドリアのメニューができた（採点あり）。伝票にないドリアを出すと、注文ミスになる
+  it('下駄に乗せたドリアは、提供台に出せる（ドリアの伝票がなければ注文ミス）', () => {
     const g = newGame();
     bakeDoria(g);
     g.interact(stack);
@@ -144,8 +145,8 @@ describe('提供', () => {
     const before = { score: g.state.score, mistakes: g.state.mistakes };
     g.interact(pass);
     expect(g.state.hand).toBeNull();
-    expect(g.state.score).toBe(before.score);
-    expect(g.state.mistakes).toBe(before.mistakes);
+    expect(g.state.score).toBe(before.score); // 0点から −30 しても 0点のまま
+    expect(g.state.mistakes).toBe(before.mistakes + 1);
   });
 
   it('下駄に乗せていないドリアは、提供台に出せない', () => {

@@ -1,6 +1,9 @@
+import { BAKE_STATE_NAME, BAKE_TABLE, BURN_RATIO, bakeLabel, currentNeed, progressOf, stateFor, viewOf, type BakeDish } from './bake';
 import type { GameConfig } from './config';
-import { BAKE_DISHES, OVEN_BELT } from './layout';
-import type { BakeState, BakeStyle, Item, Oven, OvenDeck, OvenDish, PizzaBuild } from './types';
+import { BAKE_DISHES, BAKE_SERIES, OVEN_BELT } from './layout';
+import type { BakeProgress, BakeSeries, BakeState, BakeStyle, Item, Oven, OvenDeck, OvenDish, PizzaBuild } from './types';
+
+export { BAKE_STATE_NAME, BURN_RATIO };
 
 // ジェットオーブン（ベルトコンベア式）。上段・下段の2段があり、段ごとにベルトの速さが違う。
 //
@@ -21,7 +24,7 @@ type OvenTimes = Pick<GameConfig, 'ovenUpperTime' | 'ovenLowerTime'>;
 
 export const OVEN_DECKS: readonly OvenDeck[] = ['upper', 'lower'];
 export const OVEN_DECK_NAME: Record<OvenDeck, string> = { upper: '上段', lower: '下段' };
-export const BAKE_STYLES: readonly BakeStyle[] = ['doria', 'pizza'];
+export const BAKE_STYLES = Object.keys(BAKE_DISHES) as readonly BakeStyle[];
 
 const EPS = 1e-6;
 const TOTAL = OVEN_BELT.length * 2 + OVEN_BELT.body; // ベルト全体の長さ
@@ -47,13 +50,16 @@ export function endS(style: BakeStyle): number {
 // ベルトの上の皿の位置。x = ベルトの中心からの横のずれ（m）、s = 入口の端からの距離（m。皿の中心）
 export type DishPos = { x: number; s: number };
 
-// 横の置き場（ベルトの中心からのずれ）。ドリア系は3レーン、ピザ系は2つ（ベルトの幅に2つ並ぶ）。
-// 3レーンは、出口で、どのレーンから取るかの区切りにも使う
+// 横の置き場（ベルトの中心からのずれ）。器の種類ではなく、寸法の系統（layout.ts の BAKE_SERIES）で決まる。
+// 3列系は3レーン、2列系は2つ（ベルトの幅に2つ並ぶ）。3レーンは、出口で、どのレーンから取るかの区切りにも使う
 export const LANE_OFFSETS = Array.from({ length: OVEN_BELT.lanes }, (_, i) => (i - (OVEN_BELT.lanes - 1) / 2) * LANE_PITCH);
-export const SLOT_OFFSETS: Record<BakeStyle, number[]> = {
-  doria: LANE_OFFSETS,
-  pizza: [-0.5, 0.5].map((k) => k * widOf('pizza')),
+export const SERIES_OFFSETS: Record<BakeSeries, number[]> = {
+  three: LANE_OFFSETS,
+  two: [-0.5, 0.5].map((k) => k * BAKE_SERIES.two.d),
 };
+export const SLOT_OFFSETS = Object.fromEntries(
+  (Object.keys(BAKE_DISHES) as BakeStyle[]).map((style) => [style, SERIES_OFFSETS[BAKE_DISHES[style].series]]),
+) as Record<BakeStyle, number[]>;
 
 // 横の位置から、いちばん近いレーンの番号（出口で取るときの対象は、3レーンのどれか）
 export function laneOfOffset(x: number): number {
@@ -77,35 +83,68 @@ export function clampPlacement(style: BakeStyle, x: number, s: number): DishPos 
 }
 
 // --- 焼け具合 ---
-// ドリア系は、下段の時間（ovenLowerTime）で焼き上がる。上段（ovenUpperTime）だけだと生焼けで、もう一度上段に流すと焼き上がる（上段2周 = 下段1周）。
-// ピザ系は、上段の時間で焼き上がる。下段に流すと焦げる。
+// 必要な焼き時間は、品ごとに bake.ts の表で決まる（段階焼き。いまの段階で焼いた秒数で数える）。既存の2品は:
+// ドリア系（ミラノドリア）は、下段の時間（ovenLowerTime = 上段2周）で焼き上がる。上段（ovenUpperTime）だけだと生焼けで、もう一度上段に流すと焼き上がる（上段2周 = 下段1周）。
+// ピザ系（バッファローピザ）は、上段の時間で焼き上がる。下段に流すと焦げる。
 // 焼いた秒数の合計が、必要な秒数にぴったりなら焼き上がり。足りなければ生焼け、BURN_RATIO 倍を超えると焦げて、提供できない（焦げたあとは戻らない）
-export const BURN_RATIO = 1.25;
 
-// その種類の皿が焼き上がるのに必要な秒数
+// その種類の皿（中身は、山から取ったままの形）が焼き上がるのに必要な秒数（表から引く）
 export function bakeNeed(style: BakeStyle, cfg: OvenTimes): number {
-  return style === 'doria' ? cfg.ovenLowerTime : cfg.ovenUpperTime;
+  const need = currentNeed(viewOf({ style }), cfg);
+  if (need === null) throw new Error(`no bake dish for style: ${style}`);
+  return need;
 }
 
-// 焼いた秒数の合計（cooked）からわかる、焼け具合
+// 焼いた秒数の合計（cooked）からわかる、焼け具合（その種類の皿の、山から取ったままの中身で表を引く）
 export function bakeState(style: BakeStyle, cooked: number, cfg: OvenTimes): BakeState {
-  const need = bakeNeed(style, cfg);
-  if (cooked <= EPS) return 'raw';
-  if (cooked < need - EPS) return 'half';
-  return cooked <= need * BURN_RATIO + EPS ? 'baked' : 'burnt';
+  return stateFor(viewOf({ style }), cooked, cfg);
 }
 
-export const BAKE_STATE_NAME: Record<BakeState, string> = { raw: '焼く前', half: '生焼け', baked: '焼き上がり', burnt: '焦げた' };
-
-// 手に持つ焼き皿（焼いた秒数と、その焼け具合）
+// 手に持つ焼き皿（いまの段階で焼いた秒数と、その焼け具合）
 // pizza = ピザ系の皿にのっている物（省略 = 生地・ソース・チーズがのった、ふつうの焼き皿の見た目）
-export function bakeItem(style: BakeStyle, cooked: number, cfg: OvenTimes, pizza?: PizzaBuild): Extract<Item, { kind: 'bakeDish' }> {
-  return { kind: 'bakeDish', style, cooked, state: bakeState(style, cooked, cfg), ...(pizza ? { pizza } : {}) };
+// progress = 段階焼きの進み具合（中身・段階・手入れ・仕上げ。省略 = 1回目で何も足していない。何もない項目は持たせない）
+export function bakeItem(
+  style: BakeStyle,
+  cooked: number,
+  cfg: OvenTimes,
+  pizza?: PizzaBuild,
+  progress: BakeProgress = {},
+  table: readonly BakeDish[] = BAKE_TABLE,
+): Extract<Item, { kind: 'bakeDish' }> {
+  const p = progressOf(progress);
+  const state = stateFor(viewOf({ style, ...(pizza ? { pizza } : {}), ...p }), cooked, cfg, table);
+  return { kind: 'bakeDish', style, cooked, state, ...(pizza ? { pizza } : {}), ...p };
+}
+
+// ベルトの上の皿を、いまの段階で cooked 秒焼いた、手に持つ焼き皿にしたもの（取ったとき・描くときに使う）
+export function ovenDishItem(
+  dish: Pick<OvenDish, 'style' | 'pizza'> & BakeProgress,
+  cooked: number,
+  cfg: OvenTimes,
+  table: readonly BakeDish[] = BAKE_TABLE,
+): Extract<Item, { kind: 'bakeDish' }> {
+  return bakeItem(dish.style, cooked, cfg, dish.pizza, dish, table);
+}
+
+// 出口に出てきた皿を、いま取ったときの焼き皿（この1周ぶんを足す。出口の手前で待っていた時間は足さない）
+export function itemFromOven(
+  dish: Pick<OvenDish, 'style' | 'cooked' | 'pizza'> & BakeProgress,
+  deck: OvenDeck,
+  cfg: OvenTimes,
+  table: readonly BakeDish[] = BAKE_TABLE,
+): Extract<Item, { kind: 'bakeDish' }> {
+  return ovenDishItem(dish, (dish.cooked ?? 0) + bakeTime(deck, cfg), cfg, table);
 }
 
 // 出口に出てきた皿を、いま取ったときの焼け具合（この1周ぶんを足す）
-export function stateOnExit(dish: Pick<OvenDish, 'style' | 'cooked'>, deck: OvenDeck, cfg: OvenTimes): BakeState {
-  return bakeState(dish.style, (dish.cooked ?? 0) + bakeTime(deck, cfg), cfg);
+export function stateOnExit(dish: Pick<OvenDish, 'style' | 'cooked' | 'pizza'> & BakeProgress, deck: OvenDeck, cfg: OvenTimes): BakeState {
+  return itemFromOven(dish, deck, cfg).state;
+}
+
+// 出口に出てきた皿のうち、いちばん先のもののラベル（品名・段階・焼け具合）。出てきた皿がなければ null
+export function emergedLabel(oven: Oven, deck: OvenDeck, cfg: OvenTimes): string | null {
+  const front = oven.decks[deck].filter(isEmerged).sort((a, b) => b.s - a.s)[0];
+  return front ? bakeLabel(itemFromOven(front, deck, cfg)) : null;
 }
 
 export function createOven(): Oven {
@@ -159,11 +198,11 @@ export function canPlaceDish(oven: Oven, deck: OvenDeck, style: BakeStyle, pos: 
   return resolvePlacement(oven, deck, style, pos).valid;
 }
 
-// 入口のベルトに皿を置く。置けたら true
-export function placeDish(oven: Oven, deck: OvenDeck, style: BakeStyle, pos: DishPos, cooked = 0, pizza?: PizzaBuild): boolean {
+// 入口のベルトに皿を置く。置けたら true。cooked = いまの段階で、流す前までに焼いた秒数。progress = 段階焼きの進み具合（段階の番号など）
+export function placeDish(oven: Oven, deck: OvenDeck, style: BakeStyle, pos: DishPos, cooked = 0, pizza?: PizzaBuild, progress: BakeProgress = {}): boolean {
   const p = resolvePlacement(oven, deck, style, pos);
   if (!p.valid) return false;
-  oven.decks[deck].push({ id: oven.nextId++, style, x: p.x, s: p.s, cooked, ...(pizza ? { pizza } : {}) });
+  oven.decks[deck].push({ id: oven.nextId++, style, x: p.x, s: p.s, cooked, ...(pizza ? { pizza } : {}), ...progressOf(progress) });
   return true;
 }
 

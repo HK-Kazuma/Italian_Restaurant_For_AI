@@ -4,11 +4,12 @@ import { DevBoardView, devBoardHtml } from './devboardView';
 import { describeItem } from './game';
 import { INGREDIENTS } from './ingredients';
 import { showMission } from './mission';
-import { MENU, getMenu } from './recipe';
+import { DEFAULT_POSITION, POSITIONS, STATION_NAME, getPosition, isPosition, menusFor, rankingBoard } from './position';
+import { MENU, getMenu, type MenuItem } from './recipe';
 import { NAME_MAX, describeSubmitError, ranking } from './ranking';
 import { DEFAULT_SETTINGS, SETTING_SPECS, clampSetting, formatSetting, type SettingKey, type Settings } from './settings';
 import { hasTutorial, tutorialSteps, type TutorialView } from './tutorial';
-import type { GameState, Phase } from './types';
+import type { GameState, Phase, Position } from './types';
 
 const CONTROLS_HTML = `
   <table class="controls">
@@ -22,10 +23,10 @@ const CONTROLS_HTML = `
   </table>
 `;
 
-// iPad の画面から選べる操作。start = 選んだ難易度でゲーム開始（操作説明を出して、クリックで始まる）、close = 画面を閉じて練習キッチンに戻る、
+// iPad の画面から選べる操作。start = 選んだポジション・難易度でゲーム開始（操作説明を出して、クリックで始まる）、close = 画面を閉じて練習キッチンに戻る、
 // tutorial = そのメニューのチュートリアルを始める、tutorialStop = チュートリアルをやめる、setting = 設定の値を変える
 export type IpadAction =
-  | { type: 'start'; difficulty: Difficulty }
+  | { type: 'start'; difficulty: Difficulty; position: Position }
   | { type: 'close' }
   | { type: 'tutorial'; menuId: string }
   | { type: 'tutorialStop' }
@@ -38,12 +39,23 @@ function countedNames(ids: readonly string[]): string {
   return [...counts].map(([id, n]) => `${INGREDIENTS[id as keyof typeof INGREDIENTS].name}${n > 1 ? `×${n}` : ''}`).join('・');
 }
 
+// 伝票・レシピに出す材料名の並び（焼き物は ticketItems、皿の品は ingredients から作る）
+function itemNames(m: MenuItem): string[] {
+  return m.ticketItems ?? m.ingredients.map((id) => INGREDIENTS[id].name);
+}
+
+// ポジションの切り替え（レシピ・ランキングの上に出す）。attr = 押したときに読む data 属性の名前
+function positionTabsHtml(attr: string): string {
+  return POSITIONS.map((p) => `<button class="pos-tab" data-${attr}="${p.id}">${p.name}${p.beta ? '<sup>β</sup>' : ''}</button>`).join('');
+}
+
+// レシピのカードには station を書いておき、ポジションの切り替えで、担当する品だけを見せる
 function recipeHtml(): string {
   return MENU.filter((m) => m.enabled)
     .map(
-      (m) => `<div class="recipe-card">
-        <div class="recipe-name">${m.name}<span class="badge">${m.station === 'pasta' ? 'パスタ台' : 'サラダ台'}</span></div>
-        <div class="recipe-row"><b>完成：</b>${countedNames(m.ingredients)}</div>
+      (m) => `<div class="recipe-card" data-station="${m.station}">
+        <div class="recipe-name">${m.name}<span class="badge st-${m.station}">${STATION_NAME[m.station]}</span></div>
+        <div class="recipe-row"><b>完成：</b>${m.ticketItems ? m.ticketItems.join('・') : countedNames(m.ingredients)}</div>
         ${m.sauce ? `<div class="recipe-row"><b>鍋で加熱：</b>${countedNames(m.sauce)}</div>` : ''}
         <ol class="recipe-steps">${m.steps.map((t) => `<li>${t}</li>`).join('')}</ol>
       </div>`,
@@ -57,7 +69,7 @@ function tutorialMenuHtml(cfg: GameConfig): string {
   return MENU.filter((m) => m.enabled)
     .map((m) => {
       const steps = hasTutorial(m.id) ? tutorialSteps(m.id, cfg) : null;
-      const badge = `<span class="badge">${m.station === 'pasta' ? 'パスタ台' : 'サラダ台'}</span>`;
+      const badge = `<span class="badge st-${m.station}">${STATION_NAME[m.station]}</span>`;
       return steps
         ? `<button class="tut-card" data-tutorial="${m.id}"><span class="tut-name">${m.name}${badge}</span><span class="tut-meta">${steps.length}工程 ›</span></button>`
         : `<div class="tut-card disabled"><span class="tut-name">${m.name}${badge}</span><span class="tut-meta">準備中</span></div>`;
@@ -65,7 +77,19 @@ function tutorialMenuHtml(cfg: GameConfig): string {
     .join('');
 }
 
-// ゲーム開始の難易度えらび：カードを押すと、その難易度でゲームの準備に入る
+// ゲーム開始のポジションえらび（難易度の前）：担当する設備と品数を書いたカード。品数が少ないうちは「β」
+function positionHtml(): string {
+  return POSITIONS.map((p) => {
+    const count = menusFor(p.id).filter((m) => m.enabled).length;
+    return `<button class="diff-card pos-card ${p.id}" data-position="${p.id}">
+      <span class="diff-name">${p.name}${p.beta ? '<span class="beta">β</span>' : ''}</span>
+      <span class="diff-tagline">担当：${p.stations.map((st) => STATION_NAME[st]).join('・')}（${p.equipment}）</span>
+      <span class="diff-summary">${count}品</span>
+    </button>`;
+  }).join('');
+}
+
+// ゲーム開始の難易度えらび：カードを押すと、選んだポジションとその難易度でゲームの準備に入る
 function difficultyHtml(): string {
   return DIFFICULTIES.map(
     (d) => `<button class="diff-card ${d.id}" data-difficulty="${d.id}">
@@ -115,7 +139,14 @@ function ipadHtml(cfg: GameConfig, settings: Settings): string {
     <section class="ipad-page" data-page="start" hidden>
       <button class="back" data-go="home">‹ ホーム</button>
       <h2>ゲーム開始</h2>
-      <p>${Math.round(gameSeconds / 60)}分間のタイムアタックです。伝票は時間とともに届く間隔が短くなっていきます。難易度を選ぶと、伝票の量と出てくる料理が変わります。</p>
+      <p>${Math.round(gameSeconds / 60)}分間のタイムアタックです。まずはポジションを選びます。選んだポジションが担当する料理の伝票だけが届きます。</p>
+      <div class="diff-list">${positionHtml()}</div>
+    </section>
+    <section class="ipad-page" data-page="startDiff" hidden>
+      <button class="back" data-go="start">‹ ポジション</button>
+      <h2>ゲーム開始</h2>
+      <p class="pos-now"></p>
+      <p>伝票は時間とともに届く間隔が短くなっていきます。難易度を選ぶと、伝票の量と出てくる料理が変わります。</p>
       <div class="diff-list">${difficultyHtml()}</div>
       <p class="ipad-tip">選ぶと、最初に立っていた場所に戻り、操作説明が出ます。クリックするとゲームが始まります。練習で置いた食材のトレー・ケース、ドレッシングなどのボトル、冷蔵庫の中の物は、その配置のままです（鍋・皿・伝票などは最初の状態に戻ります）。</p>
     </section>
@@ -123,6 +154,7 @@ function ipadHtml(cfg: GameConfig, settings: Settings): string {
       <button class="back" data-go="home">‹ ホーム</button>
       <h2>レシピ（作り方）</h2>
       <p class="ipad-tip">「鍋で加熱」の材料を鍋に入れると、IHに載せた時点で自動的に加熱が始まります。</p>
+      <div class="pos-tabs">${positionTabsHtml('recipe-pos')}</div>
       <div class="recipe-list">${recipeHtml()}</div>
     </section>
     <section class="ipad-page" data-page="controls" hidden>
@@ -134,6 +166,7 @@ function ipadHtml(cfg: GameConfig, settings: Settings): string {
       <button class="back" data-go="home">‹ ホーム</button>
       <h2>ランキング</h2>
       <p class="ipad-tip">このゲームを開いているみんなのハイスコアです。自己ベストを出すと、ゲーム終了後に名前をつけて登録できます。</p>
+      <div class="pos-tabs">${positionTabsHtml('rank-pos')}</div>
       <div class="rank-tabs">${DIFFICULTIES.map((d) => `<button class="rank-tab" data-rank-diff="${d.id}">${d.name}</button>`).join('')}</div>
       <ol class="rank-list"></ol>
       <p class="rank-note"></p>
@@ -198,8 +231,11 @@ export class Hud {
   private ipadNow: HTMLElement | null = null;
   private devBoardView: DevBoardView;
   private rankDifficulty: Difficulty = DEFAULT_DIFFICULTY; // ランキングアプリで開いている難易度
+  private rankPosition: Position = DEFAULT_POSITION; // ランキングアプリで開いているポジション
+  private recipePosition: Position = DEFAULT_POSITION; // レシピアプリで見せているポジション
+  private startPosition: Position = DEFAULT_POSITION; // ゲーム開始で選んだポジション（次に難易度を選ぶ）
   private rankLoadId = 0; // 読み込みの順番（古い読み込みの結果で、新しい表示を上書きしない）
-  private rankOffer: { difficulty: Difficulty; score: number } | null = null; // ゲーム終了後に出す、ランキングへの登録
+  private rankOffer: { difficulty: Difficulty; position: Position; score: number } | null = null; // ゲーム終了後に出す、ランキングへの登録
   private tutorial = el('div', 'tutorial hidden');
   private lastTutorial = '';
   private root: HTMLElement;
@@ -238,12 +274,17 @@ export class Hud {
 
     // iPad の画面：アプリを開く・戻る・ゲーム開始・閉じる。右クリックでも閉じる
     this.ipad.addEventListener('click', (e) => {
-      const t = (e.target as HTMLElement).closest<HTMLElement>('[data-go], [data-act], [data-tutorial], [data-difficulty], [data-rank-diff]');
+      const t = (e.target as HTMLElement).closest<HTMLElement>(
+        '[data-go], [data-act], [data-tutorial], [data-difficulty], [data-rank-diff], [data-rank-pos], [data-recipe-pos], [data-position]',
+      );
       if (!t) return;
       if (t.dataset.go) this.showIpadPage(t.dataset.go);
-      else if (isDifficulty(t.dataset.rankDiff)) void this.loadRanking(t.dataset.rankDiff);
+      else if (isDifficulty(t.dataset.rankDiff)) void this.loadRanking(t.dataset.rankDiff, this.rankPosition);
+      else if (isPosition(t.dataset.rankPos)) void this.loadRanking(this.rankDifficulty, t.dataset.rankPos);
+      else if (isPosition(t.dataset.recipePos)) this.showRecipes(t.dataset.recipePos);
+      else if (isPosition(t.dataset.position)) this.choosePosition(t.dataset.position);
       else if (t.dataset.tutorial) onIpad({ type: 'tutorial', menuId: t.dataset.tutorial });
-      else if (isDifficulty(t.dataset.difficulty)) onIpad({ type: 'start', difficulty: t.dataset.difficulty });
+      else if (isDifficulty(t.dataset.difficulty)) onIpad({ type: 'start', difficulty: t.dataset.difficulty, position: this.startPosition });
       else if (t.dataset.act === 'close' || t.dataset.act === 'tutorialStop') onIpad({ type: t.dataset.act });
       else if (t.dataset.act === 'settingsReset') {
         for (const spec of SETTING_SPECS) {
@@ -291,15 +332,34 @@ export class Hud {
 
   private showIpadPage(page: string): void {
     for (const p of this.ipad.querySelectorAll<HTMLElement>('.ipad-page')) p.hidden = p.dataset.page !== page;
-    if (page === 'ranking') void this.loadRanking(this.rankDifficulty);
+    if (page === 'ranking') void this.loadRanking(this.rankDifficulty, this.rankPosition);
+    if (page === 'recipe') this.showRecipes(this.recipePosition);
     if (page === 'devboard') this.devBoardView.open();
   }
 
-  // ランキングアプリ：その難易度の上位を読み込んで並べる。名前は利用者が入力した文字なので、必ず textContent で入れる
-  private async loadRanking(difficulty: Difficulty): Promise<void> {
+  // ゲーム開始：ポジションを選んだら、難易度えらびへ
+  private choosePosition(position: Position): void {
+    this.startPosition = position;
+    const now = this.ipad.querySelector<HTMLElement>('.pos-now');
+    if (now) now.innerHTML = `ポジション：<b>${getPosition(position).name}</b>`;
+    this.showIpadPage('startDiff');
+  }
+
+  // レシピアプリ：選んだポジションが担当する品のカードだけを見せる
+  private showRecipes(position: Position): void {
+    this.recipePosition = position;
+    const stations: readonly string[] = getPosition(position).stations;
+    for (const tab of this.ipad.querySelectorAll<HTMLElement>('[data-recipe-pos]')) tab.classList.toggle('active', tab.dataset.recipePos === position);
+    for (const card of this.ipad.querySelectorAll<HTMLElement>('.recipe-card')) card.hidden = !stations.includes(card.dataset.station ?? '');
+  }
+
+  // ランキングアプリ：その難易度・ポジションの上位を読み込んで並べる。名前は利用者が入力した文字なので、必ず textContent で入れる
+  private async loadRanking(difficulty: Difficulty, position: Position): Promise<void> {
     this.rankDifficulty = difficulty;
+    this.rankPosition = position;
     const id = ++this.rankLoadId;
     for (const tab of this.ipad.querySelectorAll<HTMLElement>('.rank-tab')) tab.classList.toggle('active', tab.dataset.rankDiff === difficulty);
+    for (const tab of this.ipad.querySelectorAll<HTMLElement>('[data-rank-pos]')) tab.classList.toggle('active', tab.dataset.rankPos === position);
     const list = this.ipad.querySelector<HTMLElement>('.rank-list')!;
     const note = this.ipad.querySelector<HTMLElement>('.rank-note')!;
     list.replaceChildren();
@@ -309,7 +369,7 @@ export class Hud {
     }
     note.textContent = '読み込み中…';
     try {
-      const entries = await ranking.top(difficulty);
+      const entries = await ranking.top(rankingBoard(difficulty, position));
       if (id !== this.rankLoadId) return;
       note.textContent = entries.length === 0 ? 'まだ誰も登録していません。一番乗りを目指そう！' : '';
       entries.forEach((e, i) => {
@@ -332,7 +392,7 @@ export class Hud {
   }
 
   // ゲームが終わって自己ベストだったとき、結果画面に名前入力を出す（結果画面が出る前に呼ぶ）。なければ null
-  offerRanking(offer: { difficulty: Difficulty; score: number } | null): void {
+  offerRanking(offer: { difficulty: Difficulty; position: Position; score: number } | null): void {
     this.rankOffer = offer;
   }
 
@@ -346,10 +406,11 @@ export class Hud {
     input.disabled = true;
     status.textContent = '登録中…';
     try {
-      await ranking.submit(offer.difficulty, input.value, offer.score);
+      await ranking.submit(rankingBoard(offer.difficulty, offer.position), input.value, offer.score);
       saveName(input.value);
       this.rankOffer = null;
       this.rankDifficulty = offer.difficulty;
+      this.rankPosition = offer.position;
       status.textContent = '登録しました！ iPad の「ランキング」で見られます';
       button.hidden = true;
     } catch (e) {
@@ -444,11 +505,12 @@ export class Hud {
         const waited = Math.floor(state.time - t.arrivedAt);
         const urgency =
           waited >= this.cfg.speedBonusWindow * 0.8 ? 'late' : waited >= this.cfg.speedBonusWindow * 0.45 ? 'mid' : '';
-        const items = menu.ingredients.map((id) => INGREDIENTS[id].name).join('・');
+        const items = itemNames(menu).join('・');
         // 表示しきれない分は、いちばん右の伝票の裏に重ねて、枚数を「+x枚」で示す
         const stack = i === RAIL_VISIBLE_TICKETS - 1 && hidden > 0 ? ' stacked' : '';
         const more = stack ? `<div class="more">+${hidden}枚</div>` : '';
-        return `<div class="ticket ${urgency}${stack}"><div class="name">${menu.name}</div><div class="items">${items}</div><div class="wait">${waited}秒</div>${more}</div>`;
+        // 左端に、担当の色の帯（パスタ = 赤、サラダ = 緑、クック = 橙）
+        return `<div class="ticket st-${t.station} ${urgency}${stack}"><div class="name">${menu.name}</div><div class="items">${items}</div><div class="wait">${waited}秒</div>${more}</div>`;
       })
       .join('');
     if (html === this.lastRail) return;
@@ -461,7 +523,7 @@ export class Hud {
     const offer = this.rankOffer;
     if (!offer || !ranking.enabled) return '';
     return `<form class="rank-form">
-      <label>自己ベスト！ ランキング（${getDifficulty(offer.difficulty).name}）に名前をつけて登録できます</label>
+      <label>自己ベスト！ ランキング（${getPosition(offer.position).name}・${getDifficulty(offer.difficulty).name}）に名前をつけて登録できます</label>
       <div><input name="name" maxlength="${NAME_MAX}" value="${escapeAttr(loadName())}" placeholder="名前（${NAME_MAX}文字まで）" autocomplete="off" /><button type="submit">登録する</button></div>
       <p class="rank-status"></p>
     </form>`;
@@ -484,7 +546,7 @@ export class Hud {
         break;
       case 'ready':
         this.overlay.innerHTML = `<h1>ゲーム開始</h1>
-          ${state.difficulty ? `<p class="difficulty-now">難易度：<b>${getDifficulty(state.difficulty).name}</b></p>` : ''}
+          ${state.difficulty ? `<p class="difficulty-now">ポジション：<b>${getPosition(state.position).name}</b>　難易度：<b>${getDifficulty(state.difficulty).name}</b></p>` : ''}
           <p>${Math.round(this.cfg.gameDuration / 60)}分間のタイムアタック。届く伝票をできるだけ多く、正確にさばこう。</p>${CONTROLS_HTML}
           <p class="cta">クリックでゲーム開始</p>`;
         break;
@@ -493,7 +555,7 @@ export class Hud {
         break;
       case 'result':
         this.overlay.innerHTML = `<h1>タイムアップ！</h1>
-          ${state.difficulty ? `<p class="difficulty-now">難易度：<b>${getDifficulty(state.difficulty).name}</b></p>` : ''}
+          ${state.difficulty ? `<p class="difficulty-now">ポジション：<b>${getPosition(state.position).name}</b>　難易度：<b>${getDifficulty(state.difficulty).name}</b></p>` : ''}
           <p class="big">${state.score} 点</p>
           <p>${best <= state.score && state.score > 0 ? '🎉 ハイスコア更新！' : `ハイスコア ${best} 点`}</p>
           <p>提供 ${state.served} 皿 ／ 最大コンボ ${state.maxCombo} ／ 注文ミス ${state.mistakes}</p>

@@ -41,9 +41,10 @@ function seeded(seed = 12345): () => number {
 
 describe('Game: 難易度', () => {
   // rng = 0.5 は、間隔のばらつきがちょうど 0 になる値
-  const game = (difficulty: 'trial' | 'leading' | 'associate', rng: () => number = () => 0.5) => {
+  // position: ポジション（省略 = ヒート）。全メニューを数えるテストは、焼き物も届く通し（all）で始める
+  const game = (difficulty: 'trial' | 'leading' | 'associate', rng: () => number = () => 0.5, position: 'heat' | 'cook' | 'all' = 'heat') => {
     const g = new Game(cfg, rng);
-    g.getReady(difficulty);
+    g.getReady(difficulty, position);
     g.begin();
     return g;
   };
@@ -76,7 +77,7 @@ describe('Game: 難易度', () => {
 
   it('トライアルでは、手順の多い6品は出ない', () => {
     const seen = new Set<string>();
-    const g = game('trial', seeded());
+    const g = game('trial', seeded(), 'all');
     for (let i = 0; i < 2000; i++) {
       g.state.nextTicketAt = 0; // 毎回、次の伝票を届けさせる
       g.state.tickets = [];
@@ -89,7 +90,7 @@ describe('Game: 難易度', () => {
 
   it('アソシエイトでは、全部の品が出る（手順の多い品が多め）', () => {
     const counts = new Map<string, number>();
-    const g = game('associate', seeded());
+    const g = game('associate', seeded(), 'all');
     for (let i = 0; i < 2000; i++) {
       g.state.nextTicketAt = 0;
       g.state.tickets = [];

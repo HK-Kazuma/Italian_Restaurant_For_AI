@@ -177,23 +177,56 @@ export type Washer = {
 // ジェットオーブン（ベルトコンベア式）の段。upper = 上段（短い時間で出てくる）、lower = 下段
 export type OvenDeck = 'upper' | 'lower';
 
-// 焼き皿の種類（いまはテスト用）。doria = ドリア系（長方形。ベルトに 流れの向きに2つ × 横に3つ）、pizza = ピザ系（丸い。流れの向きに2つ × 横に2つ）
-export type BakeStyle = 'doria' | 'pizza';
+// 焼き皿（器）の種類。doria = ドリア皿（グラタン皿。長方形）、pizza = ピザの鉄板（丸い）、bakingPad = 焼成パッド（浅いステンレスの角バット）、
+// largePad = 大きめの焼成パッド、hamburgPan = ハンバーグの鉄板（黒い楕円）、eggPan = 目玉焼き鉄板（黒い長方形にくぼみ2つ）、soupBowl = 鉄のスープ皿（黒い深い丸）。
+// 寸法は「3列系」（ベルトに 流れの向きに2つ × 横に3つ）と「2列系」（2つ × 2つ）の2通りだけ。どの器がどちらかは layout.ts の BAKE_DISHES
+export type BakeStyle = 'doria' | 'pizza' | 'bakingPad' | 'largePad' | 'hamburgPan' | 'eggPan' | 'soupBowl';
+
+// 器の寸法の系統。three = 3列系、two = 2列系。ベルトのレーン・置き場の計算は、器の種類ではなく、この系統で決まる
+export type BakeSeries = 'three' | 'two';
 
 // 焼き皿の焼け具合。raw = 焼く前、half = 生焼け（もう一度焼けば焼き上がる）、baked = 焼き上がり（提供できる）、burnt = 焦げた（提供できない）。
-// どれになるかは、焼いた秒数の合計（cooked）で決まる（oven.ts の bakeState）
+// どれになるかは、いまの段階で焼いた秒数（cooked）と、品の表（bake.ts）のその段階の必要な時間で決まる（oven.ts の bakeState / bake.ts の stateFor）
 export type BakeState = 'raw' | 'half' | 'baked' | 'burnt';
 
+// --- 段階焼き（クック編設計書 4.1。品ごとの決まりは bake.ts の表）---
+// 焼き皿にのせる物（新しい品の「中身」。ピザの生地・ソース・チーズ・モッツァレラは、既存の PizzaBuild から数える）
+export type BakeLoadId =
+  | 'dough' // ピザ生地
+  | 'pizzaSauce' // ピザソース（1杯）
+  | 'pizzaCheese' // ピザチーズ（1杯）
+  | 'mozzarella' // モッツァレラ（1個を3つに分けた1つ分）
+  | 'patty' // ハンバーグのパティ
+  | 'chicken' // チキン
+  | 'shrimp' // ポップコーンシュリンプ（1つ）
+  | 'potato' // 下調理したポテト（1個）
+  | 'corn' // コーン（1杯）
+  | 'sausage'; // ソーセージ（1本）
+// のせた物と数（省略・0 = のっていない）
+export type BakeLoad = Partial<Record<BakeLoadId, number>>;
+// 流す前に必要な手入れ。scrape = ヘラではがす
+export type BakeCare = 'scrape';
+// 焼いたあとの受け台。geta = 下駄（器ごと乗せる）、pizzaPlate = ピザのお皿（中身を移す）、board = 木の板（鉄板・スープ皿を器ごと乗せる）
+export type BakeBase = 'geta' | 'pizzaPlate' | 'board';
+// 焼いたあとの仕上げ（受け台のほか。ソースをかける・振る・のせる）
+export type BakeFinishId = 'demiglace' | 'cheeseSauce' | 'vegetablePaste' | 'parsley' | 'cinnamon' | 'garlicSauce' | 'friedEgg';
+// 焼き皿の進み具合。loaded = 中身（のせた物と数）、stage = いまの段階の番号（省略 = 0。1回目）、cares = 済ませた手入れ、finishes = 済ませた仕上げ（受け台のほか）。
+// blank = 器の山から取った、空の器（焼く前の中身が入った山から取る品（ドリアなど）には当てはまらない。bake.ts の BakeDish.stock）。
+// どれも省略 = まだ何もない（既存の2品は、どれも持たない）
+export type BakeProgress = { loaded?: BakeLoad; stage?: number; cares?: BakeCare[]; finishes?: BakeFinishId[]; blank?: boolean };
+
 // ベルトに乗っている皿。x = ベルトの中心から皿の中心までの横のずれ（m）、s = 入口の端から皿の中心までの距離（m）。
-// cooked = 流す前までに焼いた秒数の合計（省略 = 0。今回の1周で出てくるまでの秒数は、まだ含まない）
-export type OvenDish = { id: number; style: BakeStyle; x: number; s: number; cooked?: number; pizza?: PizzaBuild };
+// cooked = いまの段階で、流す前までに焼いた秒数の合計（省略 = 0。今回の1周で出てくるまでの秒数は、まだ含まない）。
+// 段階の進み具合（中身・段階・手入れ・仕上げ）は BakeProgress（省略 = 1回目で、何も足していない）
+export type OvenDish = { id: number; style: BakeStyle; x: number; s: number; cooked?: number; pizza?: PizzaBuild } & BakeProgress;
 
 // ピザ系の皿（鉄板）にのっている物。dough = ピザ生地、sauce = ピザソース（1杯）、cheese = ピザチーズ（1杯）、mozz = のっているモッツァレラチーズの数（0〜6。1個を3つ分に分けるので、2個で6つ）。
 // 鉄板だけ（dough = false）から、生地 → ソース → チーズ → モッツァレラ の順に重ねる（pizza.ts）
 export type PizzaBuild = { dough: boolean; sauce: boolean; cheese: boolean; mozz: number };
 
 // ピザのお皿に入っている、焼き上がったピザ（鉄板は含まない）
-export type PlateDish = { pizza: PizzaBuild; state: BakeState };
+// 段階の進み具合（BakeProgress）は、鉄板から移すときに引き継ぐ（既存のバッファローピザは持たない）
+export type PlateDish = { pizza: PizzaBuild; state: BakeState } & BakeProgress;
 
 // 台の上に置いたピザのお皿。spot = 置き場所、dish = 入っているピザ（空なら null）
 export type PizzaPlate = { id: number; spot: TableSpot; dish: PlateDish | null };
@@ -222,7 +255,12 @@ export type OvenPreview = { deck: OvenDeck; style: BakeStyle; x: number; s: numb
 // valid = false のとき、reason は置けない理由（gap: ボトル・容器に近すぎる、surface: この台には置けない）
 export type GetaPreview = { surface: SurfaceId; x: number; z: number; valid: boolean; reason?: 'gap' | 'surface' };
 
-export type Station = 'pasta' | 'salad';
+// 伝票の担当。pasta = パスタ台、salad = サラダ台、cook = クック（ジェットオーブンの焼き物：ドリア・ピザ）
+export type Station = 'pasta' | 'salad' | 'cook';
+
+// ゲームで選ぶポジション（担当する station の組み合わせ。表は position.ts）。heat = ヒート（パスタ・サラダ）、cook = クック（焼き物だけ）、all = 通し（全部）。
+// 練習キッチンは常に all
+export type Position = 'heat' | 'cook' | 'all';
 
 export type Ticket = {
   id: number; // レール上の識別用
@@ -241,12 +279,16 @@ export type Item =
   | { kind: 'bottle'; id: BottleId } // ドレッシング・パプリカパウダー・パセリ。右クリックで皿にかける・振る（なくならない）
   | { kind: 'pot'; pot: Pot }
   | { kind: 'ipad' } // 練習キッチンの壁にかかっている iPad。右クリックで画面を開く（ゲーム開始・レシピ）
-  | { kind: 'bakeDish'; style: BakeStyle; cooked: number; state: BakeState; geta?: boolean; pizza?: PizzaBuild } // ジェットオーブンで焼く皿（ドリア系 = 長方形、ピザ系 = 丸）。cooked = これまでに焼いた秒数の合計、state = その焼け具合（oven.ts の bakeItem で作る）。geta = 下駄（木の台）に乗せてある（ドリア系の焼き上がりだけ。提供できる形）
+  | ({ kind: 'bakeDish'; style: BakeStyle; cooked: number; state: BakeState; geta?: boolean; board?: boolean; pizza?: PizzaBuild } & BakeProgress) // ジェットオーブンで焼く皿（ドリア系 = 長方形、ピザ系 = 丸）。cooked = いまの段階で焼いた秒数の合計、state = その焼け具合（oven.ts の bakeItem で作る）。geta = 下駄（木の台）に乗せてある（受け台が下駄の品の焼き上がりだけ。提供できる形）。中身・段階・手入れ・仕上げは BakeProgress（bake.ts）
   | { kind: 'geta' } // ドリアの下にひく下駄（木の台）1枚。焼き上がったドリアに左クリックで、ドリアを乗せられる
+  | { kind: 'board' } // 鉄板・スープ皿の下にひく木の板1枚（受け台。下駄と同じく、焼き上がった器を器ごと乗せる。board = true の焼き皿になる）
   | { kind: 'pizzaDough' } // ピザ生地1枚。ピザの鉄板にセットする
   | { kind: 'pizzaTopping'; id: PizzaTopping } // ピザソース・ピザチーズ（レードル1杯）、モッツァレラチーズ（1個）。ピザ組み立て台の鉄板にのせる
   | { kind: 'pizzaPlate'; dish?: PlateDish } // ピザのお皿1枚（焼き上がったピザが入っていることもある）。台に置いて、焼き上がったピザを入れる。ピザの入ったお皿は、提供台に出せる
   | { kind: 'panPile'; count: number }; // 右クリックで持ち上げた、積んだ鉄板の山。台に置き直す・作業台の鉄板のスタックに戻す
+
+// 作業枠に置ける物：3列系の焼き皿（受け台に乗せた物も）・下駄・板・小皿（どれが置けるかの決まりは game.ts の fitsWorkFrame）
+export type WorkFrameItem = Extract<Item, { kind: 'bakeDish' | 'geta' | 'board' | 'plate' }>;
 
 // 視点の先にあるクリック可能な設備
 export type Target =
@@ -267,7 +309,10 @@ export type Target =
   | { kind: 'thrownPot'; id: number } // 投げて床・台に落ちている鍋（左クリックで拾う）
   | { kind: 'ihBurner'; index: number }
   | { kind: 'hotWaterSlot'; index: number } // 熱湯に浸けるパックの置き場所
-  | { kind: 'ovenStock'; style: BakeStyle } // 具材台のテスト用の焼き皿の山（クリックで手に取る）
+  | { kind: 'ovenStock'; style: BakeStyle; dish?: string } // 具材台の焼き皿の山（クリックで手に取る）。doria = ドリアの山（焼く前のドリア。dish = どの品の山か。省略 = ミラノドリア）、pizza = 開発時だけ出す、テスト用のピザ系の皿の山
+  | { kind: 'vesselStack'; style: BakeStyle } // 具材台の下の棚の、空の器の山（空のドリア皿・焼成パッド・鉄板・スープ皿など。左クリックで1枚取る、同じ空の器を持っていれば戻す）
+  | { kind: 'workFrame'; index: number } // 1台目の具材台の作業枠（3つ）。3列系の器・受け台（下駄・板）・小皿を置いて、盛り付け・仕上げをする
+  | { kind: 'boardStack' } // 提供台の左の、木の板（鉄板用の受け台）の山（左クリックで1枚取る）
   | { kind: 'pizzaDoughStack' } // 作業台のピザ生地のスタック（左クリックで1枚取る）
   | { kind: 'pizzaPanStack' } // 作業台のピザの鉄板のスタック（左クリックで1枚取る。生地を持っていれば、生地をのせた鉄板になる）
   | { kind: 'pizzaSource'; id: PizzaTopping } // ピザソース・ピザチーズ・モッツァレラチーズの容器（左クリックで取る）
@@ -302,6 +347,7 @@ export type GameState = {
   phase: Phase;
   mode: Mode;
   difficulty: Difficulty | null; // ゲームの難易度（iPad で選ぶ）。練習キッチンは null
+  position: Position; // ポジション（iPad で選ぶ。届く伝票の担当が決まる）。ゲームの既定は heat、練習キッチンは常に all
   ipadOpen: boolean; // iPad の画面を開いている間（マウスのカーソルが出て、視点は動かせない）
   tutorial: TutorialProgress | null; // チュートリアル中（練習キッチンで、選んだメニューを作り方の案内つきで作る）。なければ null
   time: number; // 経過時間（秒）
@@ -321,6 +367,7 @@ export type GameState = {
   pizzaSlots: (Extract<Item, { kind: 'bakeDish' }> | null)[]; // ピザ組み立て台（作業台）に置いた鉄板。null = 空き
   getaSpot: TableSpot; // 下駄の山の置き場所（提供台の左）
   getaMoving: boolean; // 下駄の山を右クリックで持ち上げている最中（手とは別。台に右クリックで置く）
+  workFrames: (WorkFrameItem | null)[]; // 1台目の具材台の作業枠（3つ。layout.ts の WORK_FRAMES）。置いてある物、null = 空き
   bottles: Record<BottleId, BottleSpot>; // 台の上のボトル
   bottleShakeAt: number | null; // 手に持ったボトルを最後に振った（かけた）ゲーム内時刻。振る動きの表示に使う
   hotWater: (Pack | null)[]; // 熱湯に浸けているパック（3×3の9か所、左上から横に数える）。null = 空き

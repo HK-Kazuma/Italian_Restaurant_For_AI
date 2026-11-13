@@ -1,10 +1,15 @@
 import type { IngredientId, Station, Ticket } from './types';
 
+// 完成の形。plate = 皿（中身の具材で判定する）、bake = 焼き物（ジェットオーブンで焼く品。どの品かは bake.ts の表を id で引き、提供の判定もその表で行う）
+export type MenuForm = 'plate' | 'bake';
+
 export type MenuItem = {
   id: string;
   name: string;
   station: Station;
-  ingredients: IngredientId[]; // 完成品の中身（順序なし。同じ物は個数分並べる）
+  form?: MenuForm; // 完成の形（省略 = plate）
+  ingredients: IngredientId[]; // 完成品の中身（順序なし。同じ物は個数分並べる）。焼き物（form が bake）は空（中身は bake.ts の表）
+  ticketItems?: string[]; // 伝票に出す材料名の並び（焼き物用。皿の品は ingredients から作る）
   sauce?: IngredientId[]; // このうち、鍋に入れて加熱する分（既定のソース）。鍋がこの中身になったら、IHで加熱が始まる
   steps: string[]; // 作り方（iPad のレシピに出す）
   basePoints: number;
@@ -245,7 +250,45 @@ export const MENU: MenuItem[] = [
     basePoints: 10,
     enabled: true,
   },
+  // --- クック（ジェットオーブンの焼き物）。段階・中身・仕上げと完成の判定は bake.ts の表（同じ id の行）---
+  {
+    id: 'milanoDoria',
+    name: 'ミラノドリア',
+    station: 'cook',
+    form: 'bake',
+    ingredients: [],
+    ticketItems: ['ドリア（下段で焼き上げ）', '下駄'],
+    steps: [
+      "具材台の棚のドリアスタックから、ドリアの皿を1枚取る",
+      "ジェットオーブンの下段の入口に流す（上段では生焼けになる）",
+      "提供台の左の下駄の山から下駄を1枚取り、出口に出てきたドリアに左クリックで乗せる",
+      "下駄に乗ったドリアを提供台へ（生焼け・焦げ・下駄なしは出せない）",
+    ],
+    basePoints: 30,
+    enabled: true,
+  },
+  {
+    id: 'buffaloPizza',
+    name: 'バッファローピザ',
+    station: 'cook',
+    form: 'bake',
+    ingredients: [],
+    ticketItems: ['ピザ生地', 'ピザソース', 'ピザチーズ', 'モッツァレラ×2'],
+    steps: [
+      "提供台の左のピザのお皿を1枚取り、台の上に置いておく",
+      "ピザ生地を1枚取り、ピザの鉄板のスタックをクリックして鉄板にのせ、組み立て台に置く",
+      "ピザソース1杯 → ピザチーズ1杯 → モッツァレラチーズ2個（1個で3つ分）の順にのせる",
+      "鉄板を持ち上げて、ジェットオーブンの上段の入口に流す",
+      "出口から焼き上がったピザを取り、台の上のお皿に入れる（鉄板はスタックに戻す）",
+      "ピザの入ったお皿を持ち上げて、提供台へ",
+    ],
+    basePoints: 50,
+    enabled: true,
+  },
 ];
+
+// 完成の形（省略 = 皿）
+export const formOf = (menu: Pick<MenuItem, 'form'>): MenuForm => menu.form ?? 'plate';
 
 export function getMenu(id: string): MenuItem {
   const menu = MENU.find((m) => m.id === id);
@@ -283,8 +326,10 @@ export function isSaucePartial(contents: readonly IngredientId[], menus: readonl
   });
 }
 
-// 皿の中身とレシピが一致するか（順序は問わず、個数まで一致）
+// 皿の中身とレシピが一致するか（順序は問わず、個数まで一致）。
+// 焼き物（form が bake）は中身を空にしてあるので、皿とは一致させない（空の皿が焼き物の伝票に当たらないように）
 export function judge(contents: readonly IngredientId[], menu: MenuItem): boolean {
+  if (formOf(menu) !== 'plate') return false;
   if (contents.length !== menu.ingredients.length) return false;
   const a = [...contents].sort();
   const b = [...menu.ingredients].sort();
@@ -296,7 +341,11 @@ export function findMatchingTicket(
   contents: readonly IngredientId[],
   tickets: readonly Ticket[],
 ): Ticket | null {
-  const matches = tickets.filter((t) => judge(contents, getMenu(t.menuId)));
-  if (matches.length === 0) return null;
-  return matches.reduce((oldest, t) => (t.arrivedAt < oldest.arrivedAt ? t : oldest));
+  return oldestTicket(tickets.filter((t) => judge(contents, getMenu(t.menuId))));
+}
+
+// 伝票のうち、最も古いもの（なければ null）。同じ品の伝票が複数あれば、古いものから消す
+export function oldestTicket(tickets: readonly Ticket[]): Ticket | null {
+  if (tickets.length === 0) return null;
+  return tickets.reduce((oldest, t) => (t.arrivedAt < oldest.arrivedAt ? t : oldest));
 }
