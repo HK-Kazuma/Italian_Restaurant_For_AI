@@ -5,9 +5,13 @@ import type { Target } from './types';
 
 const HIGHLIGHT = 0x2f7d3a;
 
+// emissive を持たない材質（ラベルの MeshBasicMaterial など）は光らせずに飛ばす。
+// ここで例外が出ると、毎フレームの処理が止まって画面がフリーズするため
 function setEmissive(root: THREE.Object3D, hex: number): void {
   root.traverse((o) => {
-    if (o instanceof THREE.Mesh) (o.material as THREE.MeshLambertMaterial).emissive.setHex(hex);
+    if (!(o instanceof THREE.Mesh)) return;
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    for (const m of mats) if ('emissive' in m && m.emissive instanceof THREE.Color) m.emissive.setHex(hex);
   });
 }
 
