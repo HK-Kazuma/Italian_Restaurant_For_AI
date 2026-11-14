@@ -158,6 +158,8 @@ function hintFor(target: Target | null): string {
   // 置いたトレー・ケース：左クリックで中身を取る、右クリックで持ち上げて置き直す
   const placedTray = !hand ? game.placedTrayOf(target) : null;
   if (placedTray) return `左クリック：${trayContentName(placedTray)}を取る　右クリック：持ち上げて、置き直す`;
+  const stock = game.stockHint(target);
+  if (stock) return stock;
   const geta = game.getaHint(target);
   if (geta) return geta;
   const pizza = game.pizzaHint(target);

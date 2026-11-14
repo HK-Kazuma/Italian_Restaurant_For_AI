@@ -5,7 +5,8 @@ import { describeItem } from './game';
 import { INGREDIENTS } from './ingredients';
 import { showMission } from './mission';
 import { DEFAULT_POSITION, POSITIONS, STATION_NAME, getPosition, isPosition, menusFor, rankingBoard } from './position';
-import { MENU, getMenu, type MenuItem } from './recipe';
+import { menuSections, pickCategory, type MenuCard, type MenuSection } from './menuList';
+import { MENU, getMenu, type MenuCategory, type MenuItem } from './recipe';
 import { NAME_MAX, describeSubmitError, ranking } from './ranking';
 import { DEFAULT_SETTINGS, SETTING_SPECS, clampSetting, formatSetting, type SettingKey, type Settings } from './settings';
 import { hasTutorial, tutorialSteps, type TutorialView } from './tutorial';
@@ -49,32 +50,60 @@ function positionTabsHtml(attr: string): string {
   return POSITIONS.map((p) => `<button class="pos-tab" data-${attr}="${p.id}">${p.name}${p.beta ? '<sup>β</sup>' : ''}</button>`).join('');
 }
 
-// レシピのカードには station を書いておき、ポジションの切り替えで、担当する品だけを見せる
-function recipeHtml(): string {
-  return MENU.filter((m) => m.enabled)
-    .map(
-      (m) => `<div class="recipe-card" data-station="${m.station}">
-        <div class="recipe-name">${m.name}<span class="badge st-${m.station}">${STATION_NAME[m.station]}</span></div>
-        <div class="recipe-row"><b>完成：</b>${m.ticketItems ? m.ticketItems.join('・') : countedNames(m.ingredients)}</div>
-        ${m.sauce ? `<div class="recipe-row"><b>鍋で加熱：</b>${countedNames(m.sauce)}</div>` : ''}
-        <ol class="recipe-steps">${m.steps.map((t) => `<li>${t}</li>`).join('')}</ol>
-      </div>`,
-    )
-    .join('');
+// レシピの中身（カードを開いた先）：完成品の中身・鍋で加熱する分・作り方。メニュー表（recipe.ts）から作る
+function recipeDetailHtml(m: MenuItem): string {
+  return `<div class="recipe-card">
+      <div class="recipe-name">${m.name}<span class="badge st-${m.station}">${STATION_NAME[m.station]}</span></div>
+      <div class="recipe-row"><b>完成：</b>${m.ticketItems ? m.ticketItems.join('・') : countedNames(m.ingredients)}</div>
+      ${m.sauce ? `<div class="recipe-row"><b>鍋で加熱：</b>${countedNames(m.sauce)}</div>` : ''}
+      <ol class="recipe-steps">${m.steps.map((t) => `<li>${t}</li>`).join('')}</ol>
+    </div>`;
 }
 
-// チュートリアルのメニュー一覧：メニュー表（recipe.ts）から作る。メニューを足せば、自動で並ぶ。
-// 工程がまだないメニューは「準備中」で、選べない
-function tutorialMenuHtml(cfg: GameConfig): string {
-  return MENU.filter((m) => m.enabled)
-    .map((m) => {
-      const steps = hasTutorial(m.id) ? tutorialSteps(m.id, cfg) : null;
-      const badge = `<span class="badge st-${m.station}">${STATION_NAME[m.station]}</span>`;
+// 一覧（レシピ・チュートリアル共通）：分類のタブ、選んだ分類の見出しと、品のカード（2列。分類の先頭の1品だけ大きい）。
+// 分類分け・並び・カードの中身は menuList.ts の menuSections が決め、ここは並べるだけ。
+// book = 'recipe'（カードを押すと作り方を開く）か 'tutorial'（カードを押すとチュートリアルを始める。工程がまだない品は「準備中」）
+type BookKind = 'recipe' | 'tutorial';
+
+function menuCardInner(c: MenuCard, meta: string): string {
+  return `<span class="menu-thumb" style="background:${c.color}" aria-hidden="true"></span>
+      <span class="menu-card-body">
+        ${c.no ? `<span class="menu-no">No.${c.no}</span>` : ''}
+        <span class="menu-card-name">${c.name}</span>
+        ${c.note ? `<span class="menu-note">${c.note}</span>` : ''}
+        <span class="menu-card-foot"><span class="badge st-${c.station}">${STATION_NAME[c.station]}</span><span class="menu-points">${c.points}<small>点</small></span>${meta ? `<span class="menu-meta">${meta}</span>` : ''}</span>
+      </span>`;
+}
+
+function menuBookHtml(kind: BookKind, sections: readonly MenuSection[], category: MenuCategory | null, tutorialCounts: ReadonlyMap<string, number>): string {
+  const section = sections.find((s) => s.category.id === category);
+  if (!section) return '<p class="menu-empty">このポジションの品はまだありません</p>';
+  const tabs = sections
+    .map((s) => `<button class="cat-tab${s.category.id === category ? ' active' : ''}" data-${kind}-cat="${s.category.id}">${s.category.name}</button>`)
+    .join('');
+  const cards = section.cards
+    .map((c) => {
+      const cls = `menu-card${c.big ? ' big' : ''}`;
+      if (kind === 'recipe') return `<button class="${cls}" data-recipe-open="${c.id}">${menuCardInner(c, '作り方 ›')}</button>`;
+      const steps = tutorialCounts.get(c.id);
       return steps
-        ? `<button class="tut-card" data-tutorial="${m.id}"><span class="tut-name">${m.name}${badge}</span><span class="tut-meta">${steps.length}工程 ›</span></button>`
-        : `<div class="tut-card disabled"><span class="tut-name">${m.name}${badge}</span><span class="tut-meta">準備中</span></div>`;
+        ? `<button class="${cls}" data-tutorial="${c.id}">${menuCardInner(c, `${steps}工程 ›`)}</button>`
+        : `<div class="${cls} disabled">${menuCardInner(c, '準備中')}</div>`;
     })
     .join('');
+  return `<div class="cat-tabs">${tabs}</div>
+    <h3 class="menu-head">${section.category.name}<small>${section.category.en}</small></h3>
+    <div class="menu-cards">${cards}</div>`;
+}
+
+// チュートリアルの工程の数（工程がまだない品は入れない）。メニューを足せば、自動で並ぶ
+function tutorialCounts(cfg: GameConfig): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const m of MENU) {
+    const steps = m.enabled && hasTutorial(m.id) ? tutorialSteps(m.id, cfg) : null;
+    if (steps) out.set(m.id, steps.length);
+  }
+  return out;
 }
 
 // ゲーム開始のポジションえらび（難易度の前）：担当する設備と品数を書いたカード。品数が少ないうちは「β」
@@ -134,7 +163,8 @@ function ipadHtml(cfg: GameConfig, settings: Settings): string {
       <h2>チュートリアル</h2>
       <p class="ipad-tip">練習したいメニューをタップすると、鍋や皿などが最初の状態に戻り（置いた食材やボトルの配置はそのまま）、作り方を矢印で順番に案内します。</p>
       <div class="tut-now" hidden></div>
-      <div class="tut-list">${tutorialMenuHtml(cfg)}</div>
+      <div class="pos-tabs">${positionTabsHtml('tutorial-pos')}</div>
+      <div class="menu-book" data-book="tutorial"></div>
     </section>
     <section class="ipad-page" data-page="start" hidden>
       <button class="back" data-go="home">‹ ホーム</button>
@@ -155,7 +185,8 @@ function ipadHtml(cfg: GameConfig, settings: Settings): string {
       <h2>レシピ（作り方）</h2>
       <p class="ipad-tip">「鍋で加熱」の材料を鍋に入れると、IHに載せた時点で自動的に加熱が始まります。</p>
       <div class="pos-tabs">${positionTabsHtml('recipe-pos')}</div>
-      <div class="recipe-list">${recipeHtml()}</div>
+      <div class="menu-book" data-book="recipe"></div>
+      <div class="recipe-detail" hidden></div>
     </section>
     <section class="ipad-page" data-page="controls" hidden>
       <button class="back" data-go="home">‹ ホーム</button>
@@ -232,7 +263,11 @@ export class Hud {
   private devBoardView: DevBoardView;
   private rankDifficulty: Difficulty = DEFAULT_DIFFICULTY; // ランキングアプリで開いている難易度
   private rankPosition: Position = DEFAULT_POSITION; // ランキングアプリで開いているポジション
-  private recipePosition: Position = DEFAULT_POSITION; // レシピアプリで見せているポジション
+  private book: Record<BookKind, { position: Position; category: MenuCategory | null }> = {
+    recipe: { position: DEFAULT_POSITION, category: null }, // レシピアプリで見せているポジション・分類
+    tutorial: { position: DEFAULT_POSITION, category: null }, // チュートリアルアプリで見せているポジション・分類
+  };
+  private tutorialCounts: Map<string, number>;
   private startPosition: Position = DEFAULT_POSITION; // ゲーム開始で選んだポジション（次に難易度を選ぶ）
   private rankLoadId = 0; // 読み込みの順番（古い読み込みの結果で、新しい表示を上書きしない）
   private rankOffer: { difficulty: Difficulty; position: Position; score: number } | null = null; // ゲーム終了後に出す、ランキングへの登録
@@ -259,6 +294,7 @@ export class Hud {
     this.mission.innerHTML = `<span class="mission-icon" aria-hidden="true">🍴</span>
       <div class="mission-text"><b>ミッション：チュートリアルを受けよう！</b>
       <span>後ろの壁の iPad を取って右クリック →「チュートリアル」</span></div>`;
+    this.tutorialCounts = tutorialCounts(cfg);
     this.ipad.innerHTML = ipadHtml(cfg, settings);
     this.devBoardView = new DevBoardView(this.ipad.querySelector<HTMLElement>('[data-page="devboard"]')!);
     root.append(top, this.mission, this.note, this.tutorial, this.rail, this.crosshair, this.hint, this.guide, this.hand, this.toast, this.startPopup, this.ipad, this.overlay);
@@ -275,13 +311,18 @@ export class Hud {
     // iPad の画面：アプリを開く・戻る・ゲーム開始・閉じる。右クリックでも閉じる
     this.ipad.addEventListener('click', (e) => {
       const t = (e.target as HTMLElement).closest<HTMLElement>(
-        '[data-go], [data-act], [data-tutorial], [data-difficulty], [data-rank-diff], [data-rank-pos], [data-recipe-pos], [data-position]',
+        '[data-go], [data-act], [data-tutorial], [data-difficulty], [data-rank-diff], [data-rank-pos], [data-recipe-pos], [data-tutorial-pos], ' +
+          '[data-recipe-cat], [data-tutorial-cat], [data-recipe-open], [data-position]',
       );
       if (!t) return;
       if (t.dataset.go) this.showIpadPage(t.dataset.go);
       else if (isDifficulty(t.dataset.rankDiff)) void this.loadRanking(t.dataset.rankDiff, this.rankPosition);
       else if (isPosition(t.dataset.rankPos)) void this.loadRanking(this.rankDifficulty, t.dataset.rankPos);
-      else if (isPosition(t.dataset.recipePos)) this.showRecipes(t.dataset.recipePos);
+      else if (isPosition(t.dataset.recipePos)) this.showBook('recipe', t.dataset.recipePos);
+      else if (isPosition(t.dataset.tutorialPos)) this.showBook('tutorial', t.dataset.tutorialPos);
+      else if (t.dataset.recipeCat) this.showBook('recipe', this.book.recipe.position, t.dataset.recipeCat as MenuCategory);
+      else if (t.dataset.tutorialCat) this.showBook('tutorial', this.book.tutorial.position, t.dataset.tutorialCat as MenuCategory);
+      else if (t.dataset.recipeOpen) this.openRecipe(t.dataset.recipeOpen);
       else if (isPosition(t.dataset.position)) this.choosePosition(t.dataset.position);
       else if (t.dataset.tutorial) onIpad({ type: 'tutorial', menuId: t.dataset.tutorial });
       else if (isDifficulty(t.dataset.difficulty)) onIpad({ type: 'start', difficulty: t.dataset.difficulty, position: this.startPosition });
@@ -333,7 +374,8 @@ export class Hud {
   private showIpadPage(page: string): void {
     for (const p of this.ipad.querySelectorAll<HTMLElement>('.ipad-page')) p.hidden = p.dataset.page !== page;
     if (page === 'ranking') void this.loadRanking(this.rankDifficulty, this.rankPosition);
-    if (page === 'recipe') this.showRecipes(this.recipePosition);
+    if (page === 'recipe') this.showBook('recipe', this.book.recipe.position);
+    if (page === 'tutorial') this.showBook('tutorial', this.book.tutorial.position);
     if (page === 'devboard') this.devBoardView.open();
   }
 
@@ -345,12 +387,27 @@ export class Hud {
     this.showIpadPage('startDiff');
   }
 
-  // レシピアプリ：選んだポジションが担当する品のカードだけを見せる
-  private showRecipes(position: Position): void {
-    this.recipePosition = position;
-    const stations: readonly string[] = getPosition(position).stations;
-    for (const tab of this.ipad.querySelectorAll<HTMLElement>('[data-recipe-pos]')) tab.classList.toggle('active', tab.dataset.recipePos === position);
-    for (const card of this.ipad.querySelectorAll<HTMLElement>('.recipe-card')) card.hidden = !stations.includes(card.dataset.station ?? '');
+  // レシピ・チュートリアルの一覧：選んだポジションの分類のタブと、選んだ分類のカードを並べ直す（開いていた作り方は閉じる）。
+  // category を省くと、前に選んでいた分類（そのポジションになければ先頭の分類）
+  private showBook(kind: BookKind, position: Position, category?: MenuCategory): void {
+    const sections = menuSections(position);
+    const cat = pickCategory(sections, category ?? this.book[kind].category);
+    this.book[kind] = { position, category: cat };
+    for (const tab of this.ipad.querySelectorAll<HTMLElement>(`[data-${kind}-pos]`)) {
+      tab.classList.toggle('active', tab.dataset[`${kind}Pos`] === position);
+    }
+    const book = this.ipad.querySelector<HTMLElement>(`[data-book="${kind}"]`)!;
+    book.innerHTML = menuBookHtml(kind, sections, cat, this.tutorialCounts);
+    book.hidden = false;
+    if (kind === 'recipe') this.ipad.querySelector<HTMLElement>('.recipe-detail')!.hidden = true;
+  }
+
+  // レシピアプリ：カードを押すと、その品の作り方を開く（「‹ 一覧」で戻る）
+  private openRecipe(menuId: string): void {
+    const detail = this.ipad.querySelector<HTMLElement>('.recipe-detail')!;
+    detail.innerHTML = `<button class="back" data-recipe-pos="${this.book.recipe.position}">‹ 一覧</button>${recipeDetailHtml(getMenu(menuId))}`;
+    detail.hidden = false;
+    this.ipad.querySelector<HTMLElement>('[data-book="recipe"]')!.hidden = true;
   }
 
   // ランキングアプリ：その難易度・ポジションの上位を読み込んで並べる。名前は利用者が入力した文字なので、必ず textContent で入れる

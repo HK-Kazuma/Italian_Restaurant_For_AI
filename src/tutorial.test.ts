@@ -5,7 +5,7 @@ import { PIZZA_PLATE_GUIDE } from './layout';
 import { frontS } from './oven';
 import { MENU } from './recipe';
 import { hasTutorial, matchesTarget, tutorialSteps, type GuideAt } from './tutorial';
-import type { Target, TrayId } from './types';
+import type { PizzaTop, Target, TrayId } from './types';
 
 // --- 設備の指定（game.test.ts と同じ書き方）---
 const rack: Target = { kind: 'noodleRack' };
@@ -40,7 +40,7 @@ const pizzaPlateStack: Target = { kind: 'pizzaPlateStack' };
 const pizzaDoughStack: Target = { kind: 'pizzaDoughStack' };
 const pizzaPanStack: Target = { kind: 'pizzaPanStack' };
 const pizzaSlot = (index: number): Target => ({ kind: 'pizzaSlot', index });
-const pizzaSource = (id: 'sauce' | 'cheese' | 'mozzarella'): Target => ({ kind: 'pizzaSource', id });
+const pizzaSource = (id: 'sauce' | 'cheese' | 'mozzarella' | PizzaTop): Target => ({ kind: 'pizzaSource', id });
 const pizzaPlate = (id: number): Target => ({ kind: 'pizzaPlate', id });
 
 // 台本の1手：左クリック / 右クリック / 時間を進める / 矢印が指さない場所への左クリック（ボトルを台に置くなど）
@@ -56,6 +56,23 @@ const fridgeBottle = (id: 'dressing' | 'paprika' | 'garum'): Target => ({ kind: 
 const bin = (id: 'garlic' | 'chili'): Target => ({ kind: 'tableTray', id });
 const garlicHome = table(-0.3, -0.5, 'hotWater');
 const chiliHome = table(0.3, -0.5, 'hotWater');
+
+// C3 の品：棚の、その品の山から取ったドリア / 4番目の具を変えたピザ
+const doriaStack = (dish: string): Target => ({ kind: 'ovenStock', style: 'doria', dish });
+const workFrame = (index: number): Target => ({ kind: 'workFrame', index });
+const c3Doria = (dish: string): Act[] => [
+  doriaStack(dish), { kind: 'ovenInlet', deck: 'lower', x: 0, s: frontS('doria') }, wait(cfg.ovenLowerTime + 1),
+  getaStack, { kind: 'ovenOutlet', deck: 'lower', lane: 1 }, pass,
+];
+const c3Pizza = (top: PizzaTop): Act[] => [
+  pizzaPlateStack, { free: table(PIZZA_PLATE_GUIDE.x, PIZZA_PLATE_GUIDE.z, 'left') },
+  pizzaDoughStack, pizzaPanStack, pizzaSlot(0),
+  pizzaSource('sauce'), pizzaSlot(0), pizzaSource('cheese'), pizzaSlot(0),
+  pizzaSource(top), pizzaSlot(0),
+  pizzaSlot(0), { kind: 'ovenInlet', deck: 'upper', x: 0, s: frontS('pizza') }, wait(cfg.ovenUpperTime + 1),
+  { kind: 'ovenOutlet', deck: 'upper', lane: 0 },
+  pizzaPlate(1), pizzaPanStack, pizzaPlate(1), pass,
+];
 
 // 洗い終わった鍋を、鍋置き場に戻す（最後の工程）
 const returnPot = (): Act[] => [wait(cfg.potWashTime + 1), washer, potSlot(0)];
@@ -185,6 +202,18 @@ const SCRIPTS: Record<string, Act[]> = {
     { kind: 'ovenOutlet', deck: 'upper', lane: 0 }, // ピザ系は、ベルトの左右2つの置き場の左（レーン0 の側）に流れる
     pizzaPlate(1), pizzaPanStack, pizzaPlate(1), pass,
   ],
+  // C3 の6品を有効化（2026-11-14）したため、提供できる品に台本を足す（c3menu.test.ts の台本と同じ手順）
+  // 焼きチーズミラノドリア：山 → 下段 → 下駄 → 作業枠に置く → パセリを取って1回振り、戻す → 持ち上げて提供
+  cheeseMilanoDoria: [
+    doriaStack('cheeseMilanoDoria'), { kind: 'ovenInlet', deck: 'lower', x: 0, s: frontS('doria') }, wait(cfg.ovenLowerTime + 1),
+    getaStack, { kind: 'ovenOutlet', deck: 'lower', lane: 1 },
+    workFrame(0), bottle('parsley'), { right: workFrame(0) }, { free: parsleyBack }, workFrame(0), pass,
+  ],
+  tarakoDoria: c3Doria('tarakoDoria'),
+  tarakoGratin: c3Doria('tarakoGratin'),
+  vegMushroomPizza: c3Pizza('vegMushroom'),
+  sausagePizza: c3Pizza('sausage'),
+  cornPizza: c3Pizza('corn'),
 };
 
 function newTutorial(menuId: string) {

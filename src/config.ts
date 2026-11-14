@@ -35,6 +35,13 @@ export type GameConfig = {
   maxPlateContents: number; // 皿に載せられる中身の上限
   pizzaSlotCount: number; // 作業台：ピザの鉄板を置いて組み立てる場所の数
   pizzaPanCount: number; // 作業台：ピザの鉄板のスタックの枚数（1山。取ると減り、0になったら使い終わった鉄板を戻して再利用する）
+  // 冷凍の袋・ストック（クック編 C5。袋・容器の種類は cookStock.ts の表）
+  loadStackMax: number; // 冷凍の袋・ストック容器から、同じ種類の具を重ねて手に持てる数
+  potatoPerLargePad: number; // 大きめの焼成パッド1つ（冷凍ポテトの袋の1/4）を下調理すると、できるポテトの数
+  potatoStockStart: number; // ゲーム開始時の、下調理したポテトのストックの数
+  prepStockConsume: boolean; // ストックから取ると減るか（トライアルは減らない。difficulty.ts で上書きする）
+  prepStockLowAt: number; // ストックがこの数以下になったら、容器のラベルの色を変える
+  maxBakeFinishes: number; // 焼き物（受け台に乗せた器）に振る・かける仕上げの回数の上限（振りすぎは注文ミス。上限は、押し続けたときに際限なく増えないためだけ）
 
   // 伝票
   firstTicketAt: number; // 最初の伝票が届く時刻（秒）
@@ -90,6 +97,13 @@ export const DEFAULT_CONFIG: GameConfig = {
   maxPlateContents: 8,
   pizzaSlotCount: 2,
   pizzaPanCount: 10,
+  maxBakeFinishes: 4, // 仮
+
+  loadStackMax: 9, // 仮（焼成パッドにシュリンプは9つまで）
+  potatoPerLargePad: 16, // 仮
+  potatoStockStart: 16, // 仮
+  prepStockConsume: true,
+  prepStockLowAt: 4, // 仮
 
   firstTicketAt: 3,
   ticketIntervalStart: 25,

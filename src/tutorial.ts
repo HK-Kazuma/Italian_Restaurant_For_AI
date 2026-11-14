@@ -1,10 +1,10 @@
-import { BOTTLE_ACTION, BOTTLE_FRIDGE_ITEM, BOTTLE_PLATE, isFridgeBottle } from './bottle';
+import { BOTTLE_ACTION, BOTTLE_BAKE_FINISH, BOTTLE_FRIDGE_ITEM, BOTTLE_PLATE, isFridgeBottle } from './bottle';
 import type { GameConfig } from './config';
 import { FRIDGE_ITEM_IDS } from './fridge';
 import { INGREDIENTS } from './ingredients';
-import { BOTTLE_HOME, FREE_TRAY_HOME, OVEN_STOCK_NAME, PIZZA_PLATE_GUIDE } from './layout';
+import { BOTTLE_HOME, FREE_TRAY_HOME, OVEN_STOCK_NAME, PIZZA_PLATE_GUIDE, SHELF_STACKS } from './layout';
 import { OVEN_DECKS, OVEN_DECK_NAME, bakeTime, isEmerged, laneOfOffset, timeToEmerge } from './oven';
-import { MOZZ_PER_BALL, MOZZ_TOTAL, PIZZA_TOPPING_NAME, pizzaOf } from './pizza';
+import { MOZZ_PER_BALL, MOZZ_TOTAL, PIZZA_TOPPING_NAME, isPizzaTop, pizzaOf } from './pizza';
 import { warmTime } from './pack';
 import { isNoodle } from './pot';
 import { getMenu, type MenuItem } from './recipe';
@@ -121,7 +121,8 @@ function pizzaBuilds(s: GameState): PizzaBuild[] {
 const pizzaInPlate = (s: GameState) => s.pizzaPlates.some((p) => p.dish !== null) || (s.hand?.kind === 'pizzaPlate' && s.hand.dish !== undefined);
 
 // その具が、もうのっているか（モッツァレラは全部のせ終わったか）
-const hasTopping = (p: PizzaBuild, id: PizzaTopping) => (id === 'sauce' ? p.sauce : id === 'cheese' ? p.cheese : p.mozz >= MOZZ_TOTAL);
+const hasTopping = (p: PizzaBuild, id: PizzaTopping) =>
+  id === 'sauce' ? p.sauce : id === 'cheese' ? p.cheese : isPizzaTop(id) ? p.top === id : p.mozz >= MOZZ_TOTAL;
 
 // 鍋が載っているIHの口（なければ -1）
 const burnerWithPot = (s: GameState) => s.ihBurners.findIndex((p) => p !== null);
@@ -488,11 +489,11 @@ function makeKit(menu: MenuItem, cfg: GameConfig) {
   const outletOf = (deck: OvenDeck, dish: OvenDish | undefined): Target => ({ kind: 'ovenOutlet', deck, lane: dish ? laneOfOffset(dish.x) : 1 });
   const handBusy = (s: GameState) => (s.hand ? '手がふさがっています（置くか、右クリックで捨てる）' : null);
 
-  // 具材台の焼き皿の山から1枚取って、オーブンの段に流す（ドリアスタック）
-  const stockToOven = (style: BakeStyle, deck: OvenDeck) =>
+  // 具材台の焼き皿の山から1枚取って、オーブンの段に流す（ドリアスタック）。dish = どの品の山か（省略 = どの山でも矢印は最初の山を指す）
+  const stockToOven = (style: BakeStyle, deck: OvenDeck, dish?: string) =>
     carry({
-      label: `${OVEN_STOCK_NAME[style]}から皿を取って、オーブンの${OVEN_DECK_NAME[deck]}に流す`,
-      from: () => ({ kind: 'ovenStock', style }),
+      label: `${dish ? `棚の「${SHELF_STACKS.find((x) => x.dish === dish)?.label ?? dish}」の山` : OVEN_STOCK_NAME[style]}から皿を取って、オーブンの${OVEN_DECK_NAME[deck]}に流す`,
+      from: () => ({ kind: 'ovenStock', style, ...(dish ? { dish } : {}) }),
       holding: (s) => {
         const d = handDish(s, style);
         return d !== null && (d.state === 'raw' || d.state === 'half');
@@ -531,6 +532,41 @@ function makeKit(menu: MenuItem, cfg: GameConfig) {
         if (s.hand?.kind === 'geta') return '出口のドリアを左クリックで、下駄に乗せて取る';
         if (bakedInHand(s)) return '下駄の山を左クリックで、ドリアを下駄に乗せる';
         return handBusy(s) ?? '提供台の左の下駄の山から、下駄を1枚取る';
+      },
+    };
+  };
+
+  // 下駄に乗せたドリアがある作業枠（なければ -1）・空いている作業枠（なければ 0）
+  const frameWithGetaDish = (s: GameState) => s.workFrames.findIndex((f) => f?.kind === 'bakeDish' && f.geta === true);
+  const freeFrame = (s: GameState) => Math.max(0, s.workFrames.findIndex((f) => f === null));
+  const getaDishInHand = (s: GameState) => handDish(s, 'doria')?.geta === true;
+
+  // 下駄に乗せたドリアを、作業枠に置く（パセリなどの仕上げをするため。ボトルを持つには、手を空ける）
+  const getaDishToFrame = carry({
+    label: '下駄に乗せたドリアを、作業枠に置く',
+    from: () => ({ kind: 'getaStack' }),
+    holding: getaDishInHand,
+    to: (s) => ({ kind: 'workFrame', index: freeFrame(s) }),
+    done: (s) => frameWithGetaDish(s) >= 0 || served(s),
+    hint: (_s, holding) => (holding ? '作業枠（1台目の具材台の、部屋の中央側の縁）の空きを左クリックで置く' : null),
+  });
+
+  // ボトルを取って、作業枠のドリアに右クリックで1回振り、元の場所に戻す（焼き物の仕上げ。振りすぎは注文ミス）
+  const bakeBottle = (id: BottleId): TutorialStep => {
+    const finish = BOTTLE_BAKE_FINISH[id];
+    const onDish = (s: GameState) => s.workFrames.some((f) => f?.kind === 'bakeDish' && finish !== undefined && (f.finishes ?? []).includes(finish));
+    const holding = (s: GameState) => s.hand?.kind === 'bottle' && s.hand.id === id;
+    const spot = BOTTLE_HOME[id];
+    return {
+      label: `${BOTTLE_ACTION[id]}（作業枠のドリアに1回）`,
+      at: (s) => {
+        if (!holding(s)) return { kind: 'bottle', id };
+        return onDish(s) ? { kind: 'surfaceSpot', surface: spot.surface, x: spot.x, z: spot.z } : { kind: 'workFrame', index: Math.max(0, frameWithGetaDish(s)) };
+      },
+      done: (s) => (onDish(s) && s.bottles[id] !== null) || served(s),
+      hint: (s) => {
+        if (!holding(s)) return s.hand ? '手がふさがっています（置くか、右クリックで捨てる）' : 'ボトルを左クリックで取る';
+        return onDish(s) ? '元の場所に置く（台の上を左クリック）' : `作業枠のドリアに視点を合わせて、右クリック（1回だけ。2回振ると注文ミス）`;
       },
     };
   };
@@ -644,6 +680,8 @@ function makeKit(menu: MenuItem, cfg: GameConfig) {
     },
   );
   const serveDoria = serveBaked((s) => handDish(s, 'doria')?.geta === true, () => ({ kind: 'getaStack' }));
+  // 作業枠で仕上げたドリアを持ち上げて、提供台に出す
+  const serveDoriaFromFrame = serveBaked(getaDishInHand, (s) => ({ kind: 'workFrame', index: Math.max(0, frameWithGetaDish(s)) }));
 
   return {
     stockToOven,
@@ -657,6 +695,9 @@ function makeKit(menu: MenuItem, cfg: GameConfig) {
     panBack,
     servePizza,
     serveDoria,
+    getaDishToFrame,
+    bakeBottle,
+    serveDoriaFromFrame,
     pizzaInPlate,
     openFridge,
     noodleToBasket,
@@ -902,19 +943,40 @@ const RECIPES: Record<string, (k: Kit) => TutorialStep[]> = {
   // ドリアは下段（上段2周ぶんの時間）で焼き上がる。焼いている間に、下駄を用意する
   milanoDoria: (k) => [k.stockToOven('doria', 'lower'), k.waitBake('doria', 'lower'), k.getaOnDish('lower'), k.serveDoria],
   // ピザは上段の1周で焼き上がる。先にお皿を台に置いておき、焼き上がったら入れる
-  buffaloPizza: (k) => [
+  buffaloPizza: (k) => pizzaRecipe(k, 'mozzarella'),
+  // --- クック編 C3 の6品（2026-11-14 に MENU へ足して有効化）---
+  // ドリア3品：棚の、その品の山から取る。焼きチーズミラノドリアだけ、下駄に乗せたあと作業枠でパセリを振る
+  cheeseMilanoDoria: (k) => [
+    k.stockToOven('doria', 'lower', 'cheeseMilanoDoria'),
+    k.waitBake('doria', 'lower'),
+    k.getaOnDish('lower'),
+    k.getaDishToFrame,
+    k.bakeBottle('parsley'),
+    k.serveDoriaFromFrame,
+  ],
+  tarakoDoria: (k) => [k.stockToOven('doria', 'lower', 'tarakoDoria'), k.waitBake('doria', 'lower'), k.getaOnDish('lower'), k.serveDoria],
+  tarakoGratin: (k) => [k.stockToOven('doria', 'lower', 'tarakoGratin'), k.waitBake('doria', 'lower'), k.getaOnDish('lower'), k.serveDoria],
+  // ピザ3品：バッファローピザと同じ順で、4番目の具だけ変える（レードル1杯）
+  vegMushroomPizza: (k) => pizzaRecipe(k, 'vegMushroom'),
+  sausagePizza: (k) => pizzaRecipe(k, 'sausage'),
+  cornPizza: (k) => pizzaRecipe(k, 'corn'),
+};
+
+// ピザの工程（4番目の具 fourth だけ品ごとに変わる）
+function pizzaRecipe(k: Kit, fourth: Extract<PizzaTopping, 'mozzarella' | 'vegMushroom' | 'sausage' | 'corn'>): TutorialStep[] {
+  return [
     k.pizzaPlateToTable,
     k.doughPanToSlot,
     k.pizzaTopping('sauce'),
     k.pizzaTopping('cheese'),
-    k.pizzaTopping('mozzarella'),
+    k.pizzaTopping(fourth),
     k.pizzaToOven('upper'),
     k.waitBake('pizza', 'upper', k.pizzaInPlate),
     k.bakedToPlate('upper'),
     k.panBack,
     k.servePizza,
-  ],
-};
+  ];
+}
 
 // このメニューのチュートリアルがあるか（iPad のメニュー一覧で、選べるかどうかに使う）
 export function hasTutorial(menuId: string): boolean {

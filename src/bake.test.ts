@@ -71,9 +71,16 @@ function runBelt(item: Dish, deck: OvenDeck, table: readonly BakeDish[] = TEST_T
 
 describe('表（BAKE_TABLE）の中身', () => {
   it('既存の2品が、同じ値で載っている（ドリア = 1段階・L、ピザ = 1段階・U）', () => {
+    // C3 の6品を有効化（2026-11-14）したため、表は8品。既存の2品の値は変わらず、6品は末尾に並ぶ
     expect(BAKE_TABLE.map((d) => [d.id, d.vessel, d.stages.map((s) => s.need), d.finish.base])).toEqual([
       ['milanoDoria', 'doria', [cfg.ovenLowerTime / U], 'geta'],
       ['buffaloPizza', 'pizza', [1], 'pizzaPlate'],
+      ['cheeseMilanoDoria', 'doria', [2], 'geta'],
+      ['tarakoDoria', 'doria', [2], 'geta'],
+      ['tarakoGratin', 'doria', [2], 'geta'],
+      ['vegMushroomPizza', 'pizza', [1], 'pizzaPlate'],
+      ['sausagePizza', 'pizza', [1], 'pizzaPlate'],
+      ['cornPizza', 'pizza', [1], 'pizzaPlate'],
     ]);
     expect(stageRange(BAKE_TABLE[1], 0).max).toEqual({ dough: 1, pizzaSauce: 1, pizzaCheese: 1, mozzarella: MOZZ_TOTAL });
   });

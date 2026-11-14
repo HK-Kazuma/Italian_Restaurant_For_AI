@@ -572,9 +572,6 @@ body {
   background: #ffcc00;
   color: #3a2a00;
 }
-.recipe-card[hidden] {
-  display: none;
-}
 .diff-name {
   font-size: 20px;
   font-weight: bold;
@@ -591,11 +588,6 @@ body {
 }
 .difficulty-now b {
   color: #ffd166;
-}
-.recipe-list {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
 }
 .recipe-card {
   padding: 10px 12px;
@@ -768,50 +760,6 @@ body {
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.28);
   font-size: 14px;
-}
-.tut-list {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-.tut-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  box-sizing: border-box;
-  padding: 14px 16px;
-  border: 0;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.16);
-  font-family: inherit;
-  font-size: 17px;
-  font-weight: bold;
-  text-align: left;
-  color: #fff;
-}
-button.tut-card {
-  cursor: pointer;
-}
-button.tut-card:hover {
-  background: rgba(255, 255, 255, 0.28);
-}
-.tut-card.disabled {
-  opacity: 0.45;
-}
-.tut-card .badge {
-  margin-left: 8px;
-  padding: 1px 8px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.25);
-  font-size: 11px;
-  font-weight: normal;
-}
-.tut-card .tut-meta {
-  flex: none;
-  font-size: 13px;
-  font-weight: normal;
-  color: #d8d2e8;
 }
 
 /* チュートリアル中の工程の一覧（画面の左）：いまの工程を大きく、次の工程は矢印でつなぐ */
@@ -1095,4 +1043,143 @@ button.tut-card:hover {
   min-height: 1.2em;
   margin: 0;
   font-size: 14px;
+}
+/* レシピ・チュートリアルの一覧（クック編C9の前半）：明るい紙の色の台紙に、分類のタブ・分類の見出し・2列の品のカード。
+   サムネは色の四角（写真・イラストは使わない） */
+.menu-book {
+  margin-top: 4px;
+  padding: 12px 14px 16px;
+  border-radius: 14px;
+  background: #fbf5e6;
+  color: #3b2f22;
+}
+.cat-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed #d8c9a8;
+}
+.ipad .cat-tab {
+  padding: 5px 12px;
+  border: 1px solid #d8c9a8;
+  border-radius: 16px;
+  background: #fffdf7;
+  font-size: 13px;
+  font-weight: bold;
+  color: #6b5537;
+}
+.ipad .cat-tab:hover {
+  background: #f3e8cf;
+}
+.ipad .cat-tab.active {
+  border-color: #8a3b24;
+  background: #8a3b24;
+  color: #fffdf7;
+}
+.menu-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 12px 0 10px;
+  padding-bottom: 4px;
+  border-bottom: 2px solid #8a3b24;
+  font-size: 20px;
+  color: #8a3b24;
+}
+.menu-head small {
+  font-size: 11px;
+  font-weight: normal;
+  letter-spacing: 0.18em;
+  color: #a38766;
+}
+.menu-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.ipad .menu-card {
+  display: flex;
+  gap: 10px;
+  box-sizing: border-box;
+  padding: 8px;
+  border: 1px solid #e6d9bb;
+  border-radius: 10px;
+  background: #fffdf7;
+  font-family: inherit;
+  text-align: left;
+  color: #3b2f22;
+}
+.ipad button.menu-card:hover {
+  border-color: #8a3b24;
+  background: #fff8ea;
+}
+.menu-card.disabled {
+  opacity: 0.5;
+}
+.menu-card.big {
+  grid-column: 1 / -1;
+}
+.menu-thumb {
+  flex: none;
+  width: 64px;
+  aspect-ratio: 4 / 3; /* 撮影するサムネ（256 × 192）と同じ縦横比 */
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+.menu-card.big .menu-thumb {
+  width: 128px;
+}
+.menu-card-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.menu-no {
+  font-size: 11px;
+  color: #a38766;
+}
+.menu-card-name {
+  font-size: 15px;
+  font-weight: bold;
+}
+.menu-card.big .menu-card-name {
+  font-size: 19px;
+}
+.menu-note {
+  font-size: 12px;
+  color: #6b5537;
+}
+.menu-card-foot {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: auto;
+  font-size: 11px;
+}
+.menu-card-foot .badge {
+  padding: 1px 8px;
+  border-radius: 10px;
+  color: #fff;
+}
+.menu-points {
+  margin-left: auto;
+  font-size: 16px;
+  font-weight: bold;
+  color: #8a3b24;
+}
+.menu-points small {
+  margin-left: 1px;
+  font-size: 11px;
+}
+.menu-meta {
+  color: #a38766;
+}
+.menu-empty {
+  color: #6b5537;
+}
+.recipe-detail .back {
+  margin-bottom: 8px;
 }

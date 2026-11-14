@@ -200,20 +200,34 @@ export type BakeLoadId =
   | 'chicken' // チキン
   | 'shrimp' // ポップコーンシュリンプ（1つ）
   | 'potato' // 下調理したポテト（1個）
+  | 'frozenPotato' // 冷凍ポテト（袋の1/4。大きめの焼成パッド1つぶん。下調理で焼くと、ストックのポテトになる）
+  | 'spicyChicken' // 辛味チキン（1つ。冷凍の袋から取る）
   | 'corn' // コーン（1杯）
-  | 'sausage'; // ソーセージ（1本）
+  | 'sausage' // ソーセージ（1本）
+  | 'vegMushroom' // ピザの具：野菜ときのこ（レードル1杯）
+  | 'slicedSausage'; // ピザの具：輪切りのソーセージ（レードル1杯。チョリソーの1本ずつのソーセージとは別の物）
 // のせた物と数（省略・0 = のっていない）
 export type BakeLoad = Partial<Record<BakeLoadId, number>>;
 // 流す前に必要な手入れ。scrape = ヘラではがす
 export type BakeCare = 'scrape';
-// 焼いたあとの受け台。geta = 下駄（器ごと乗せる）、pizzaPlate = ピザのお皿（中身を移す）、board = 木の板（鉄板・スープ皿を器ごと乗せる）
-export type BakeBase = 'geta' | 'pizzaPlate' | 'board';
+// 焼いたあとの受け台。geta = 下駄（器ごと乗せる）、pizzaPlate = ピザのお皿（中身を移す）、board = 木の板（鉄板・スープ皿を器ごと乗せる）、
+// prepStock = 下調理のストック容器（中身を空ける。伝票には出ない。クック編 C5。bake.ts の PREP_TABLE）
+export type BakeBase = 'geta' | 'pizzaPlate' | 'board' | 'prepStock';
+
+// --- 冷凍の袋・ストック（クック編設計書 4.5 / C5。決まりは cookStock.ts の表）---
+// 具材台の上の壁の吊り棚に並ぶ、冷凍の袋（なくならない）。辛味チキン・ポップコーンシュリンプ・ポテト・チョリソー
+export type FrozenBagId = 'spicyChicken' | 'popcornShrimp' | 'potato' | 'chorizo';
+// 数に限りのある、下調理のストック（ポテトだけ。減ったら下調理で足す）
+export type PrepStockId = 'potato';
+// 具材台の天板のストック容器。potato = 下調理したポテト（数に限りがある）。ほかは、なくならない（使う品は C6・C7 で入る）
+export type CookBinId = 'potato' | 'corn' | 'patty' | 'chicken' | 'focaccia' | 'egg' | 'oilSheet' | 'cheeseSauceCup' | 'demiglace' | 'vegPaste';
 // 焼いたあとの仕上げ（受け台のほか。ソースをかける・振る・のせる）
 export type BakeFinishId = 'demiglace' | 'cheeseSauce' | 'vegetablePaste' | 'parsley' | 'cinnamon' | 'garlicSauce' | 'friedEgg';
 // 焼き皿の進み具合。loaded = 中身（のせた物と数）、stage = いまの段階の番号（省略 = 0。1回目）、cares = 済ませた手入れ、finishes = 済ませた仕上げ（受け台のほか）。
 // blank = 器の山から取った、空の器（焼く前の中身が入った山から取る品（ドリアなど）には当てはまらない。bake.ts の BakeDish.stock）。
+// stock = どの品の山から取った皿か（中身の入った山から取る品（ドリア4品）の id。省略 = その器の表の最初の山の品 = ミラノドリア）。
 // どれも省略 = まだ何もない（既存の2品は、どれも持たない）
-export type BakeProgress = { loaded?: BakeLoad; stage?: number; cares?: BakeCare[]; finishes?: BakeFinishId[]; blank?: boolean };
+export type BakeProgress = { loaded?: BakeLoad; stage?: number; cares?: BakeCare[]; finishes?: BakeFinishId[]; blank?: boolean; stock?: string };
 
 // ベルトに乗っている皿。x = ベルトの中心から皿の中心までの横のずれ（m）、s = 入口の端から皿の中心までの距離（m）。
 // cooked = いまの段階で、流す前までに焼いた秒数の合計（省略 = 0。今回の1周で出てくるまでの秒数は、まだ含まない）。
@@ -221,8 +235,14 @@ export type BakeProgress = { loaded?: BakeLoad; stage?: number; cares?: BakeCare
 export type OvenDish = { id: number; style: BakeStyle; x: number; s: number; cooked?: number; pizza?: PizzaBuild } & BakeProgress;
 
 // ピザ系の皿（鉄板）にのっている物。dough = ピザ生地、sauce = ピザソース（1杯）、cheese = ピザチーズ（1杯）、mozz = のっているモッツァレラチーズの数（0〜6。1個を3つ分に分けるので、2個で6つ）。
-// 鉄板だけ（dough = false）から、生地 → ソース → チーズ → モッツァレラ の順に重ねる（pizza.ts）
-export type PizzaBuild = { dough: boolean; sauce: boolean; cheese: boolean; mozz: number };
+// top = 4番目の具がモッツァレラ以外のとき、その種類（野菜ときのこ・ソーセージ・コーン。レードル1杯。省略 = モッツァレラ、またはまだのせていない）。
+// 4番目の具は1種類だけ（モッツァレラをのせたら top はのらない、top をのせたらモッツァレラはのらない）。
+// 鉄板だけ（dough = false）から、生地 → ソース → チーズ → 4番目の具 の順に重ねる（pizza.ts）
+export type PizzaBuild = { dough: boolean; sauce: boolean; cheese: boolean; mozz: number; top?: PizzaTop };
+
+// ピザの4番目の具（クック編 C3）。モッツァレラは数で数える（PizzaBuild の mozz）。ほかの3種類は、レードル1杯（PizzaBuild の top）
+export type PizzaFourth = 'mozzarella' | PizzaTop;
+export type PizzaTop = 'vegMushroom' | 'sausage' | 'corn';
 
 // ピザのお皿に入っている、焼き上がったピザ（鉄板は含まない）
 // 段階の進み具合（BakeProgress）は、鉄板から移すときに引き継ぐ（既存のバッファローピザは持たない）
@@ -240,7 +260,8 @@ export type PanPile = { spot: TableSpot; count: number };
 export type PropPreview = { what: 'plate' | 'pan' | 'panPile'; surface: SurfaceId; x: number; z: number; r: number; valid: boolean; reason?: 'gap' | 'surface' | 'pile' };
 
 // ピザの具の取り出し元（作業台の容器）。sauce = 正方形の容器のピザソース、cheese = 長方形の容器のピザチーズ（どちらもレードルで1杯）、mozzarella = プラスチックの容器のモッツァレラチーズ（1個）
-export type PizzaTopping = 'sauce' | 'cheese' | 'mozzarella';
+// vegMushroom・sausage・corn = 4番目の具の容器（野菜ときのこ・輪切りのソーセージ・コーン。レードルで1杯。モッツァレラの隣に並ぶ）
+export type PizzaTopping = 'sauce' | 'cheese' | 'mozzarella' | PizzaTop;
 
 export type Oven = {
   decks: Record<OvenDeck, OvenDish[]>;
@@ -285,7 +306,9 @@ export type Item =
   | { kind: 'pizzaDough' } // ピザ生地1枚。ピザの鉄板にセットする
   | { kind: 'pizzaTopping'; id: PizzaTopping } // ピザソース・ピザチーズ（レードル1杯）、モッツァレラチーズ（1個）。ピザ組み立て台の鉄板にのせる
   | { kind: 'pizzaPlate'; dish?: PlateDish } // ピザのお皿1枚（焼き上がったピザが入っていることもある）。台に置いて、焼き上がったピザを入れる。ピザの入ったお皿は、提供台に出せる
-  | { kind: 'panPile'; count: number }; // 右クリックで持ち上げた、積んだ鉄板の山。台に置き直す・作業台の鉄板のスタックに戻す
+  | { kind: 'panPile'; count: number } // 右クリックで持ち上げた、積んだ鉄板の山。台に置き直す・作業台の鉄板のスタックに戻す
+  | { kind: 'loadStack'; id: BakeLoadId; count: number } // 重ねて持つ具（冷凍の袋・ストック容器から1つずつ取る。同じ種類だけ、上限まで。器をクリックすると、入るだけ入る。cookStock.ts）
+  | { kind: 'frozenBag'; id: FrozenBagId; left: number }; // 袋ごと持った冷凍の袋（ポテト）。left = 残りの回数（大きめの焼成パッドに1回ずつ入れる。0 で手から消える）
 
 // 作業枠に置ける物：3列系の焼き皿（受け台に乗せた物も）・下駄・板・小皿（どれが置けるかの決まりは game.ts の fitsWorkFrame）
 export type WorkFrameItem = Extract<Item, { kind: 'bakeDish' | 'geta' | 'board' | 'plate' }>;
@@ -326,7 +349,9 @@ export type Target =
   | { kind: 'bottle'; id: BottleId } // 台の上のボトル
   | { kind: 'tableTop'; surface: SurfaceId; x: number; z: number } // 台の天板。x, z は視点が合っている点（台の中心からの相対）
   | { kind: 'washer' }
-  | { kind: 'ipadWall' }; // 後ろの壁にかかっている iPad（練習中だけ。左クリックで手に取る・壁に戻す）
+  | { kind: 'ipadWall' } // 後ろの壁にかかっている iPad（練習中だけ。左クリックで手に取る・壁に戻す）
+  | { kind: 'frozenBag'; id: FrozenBagId } // 具材台の上の壁の吊り棚の、冷凍の袋（左クリックで取る。なくならない）
+  | { kind: 'cookBin'; id: CookBinId }; // 具材台の天板のストック容器（左クリックで1つ取る。ポテトは下調理したパッドを空ける）
 
 // ready = ゲーム開始前の操作説明（クリックで始まる。時間は進まない）
 export type Phase = 'title' | 'ready' | 'playing' | 'paused' | 'result';
@@ -367,6 +392,7 @@ export type GameState = {
   pizzaSlots: (Extract<Item, { kind: 'bakeDish' }> | null)[]; // ピザ組み立て台（作業台）に置いた鉄板。null = 空き
   getaSpot: TableSpot; // 下駄の山の置き場所（提供台の左）
   getaMoving: boolean; // 下駄の山を右クリックで持ち上げている最中（手とは別。台に右クリックで置く）
+  prepStock: Record<PrepStockId, number>; // 下調理のストックの数（ポテト。最初は config の potatoStockStart。取ると減る（トライアルは減らない）、下調理したパッドを空けると増える）
   workFrames: (WorkFrameItem | null)[]; // 1台目の具材台の作業枠（3つ。layout.ts の WORK_FRAMES）。置いてある物、null = 空き
   bottles: Record<BottleId, BottleSpot>; // 台の上のボトル
   bottleShakeAt: number | null; // 手に持ったボトルを最後に振った（かけた）ゲーム内時刻。振る動きの表示に使う

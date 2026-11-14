@@ -1,4 +1,4 @@
-import type { BottleId, FridgeBottleId, FridgeItemId, SurfaceId } from './types';
+import type { BakeFinishId, BottleId, FridgeBottleId, FridgeItemId, SurfaceId } from './types';
 
 // ボトル（手に持って、右クリックで皿にかける・振る物）ごとの決まり。
 
@@ -33,6 +33,12 @@ export const BOTTLE_PLATE: Record<BottleId, 'salad' | 'pasta'> = {
   garum: 'salad',
   parsley: 'pasta',
   blackPepper: 'pasta',
+};
+
+// 焼き物にも振れるボトルと、振ったときに付く焼き物の仕上げ（bake.ts の表の finish.extras）。
+// 受け台に乗せた焼き上がりの器（作業枠の上）に振る。振りすぎ（その品の仕上げより多く振る）は、出すと注文ミス（パスタの皿と同じ決まり）
+export const BOTTLE_BAKE_FINISH: Partial<Record<BottleId, BakeFinishId>> = {
+  parsley: 'parsley',
 };
 
 // 右クリックしたときの、画面に出す言い方

@@ -1,5 +1,5 @@
 import type { GameConfig } from './config';
-import { MOZZ_TOTAL, sauceCheesePizza } from './pizza';
+import { MOZZ_TOTAL, PIZZA_TOPS, pizzaName, sauceCheesePizza } from './pizza';
 import { MENU, formOf, oldestTicket, type MenuItem } from './recipe';
 import type {
   BakeBase,
@@ -12,6 +12,7 @@ import type {
   BakeStyle,
   Item,
   PizzaBuild,
+  PrepStockId,
   Ticket,
 } from './types';
 
@@ -54,16 +55,35 @@ export type BakeFinish = {
   extras?: BakeFinishId[]; // ソース・振る物・のせる物（受け台のほか）
 };
 
+// 下調理（伝票に出ない）の焼き上がりを、ストック容器に空けたときに増える数。per = その数の設定値（config.ts）の名前
+export type PrepYieldKey = 'potatoPerLargePad';
+export type PrepYield = { stock: PrepStockId; per: PrepYieldKey };
+
 export type BakeDish = {
-  id: string; // メニューの id（recipe.ts の MENU と同じ）
+  id: string; // メニューの id（recipe.ts の MENU と同じ）。下調理の行は、下調理の id
+  name?: string; // 名前（メニューにない行 = 下調理だけ。メニューの品は recipe.ts の名前）
   vessel: BakeStyle; // 器
-  stock?: boolean; // 焼く前の中身が入った山から取る品（ドリアなど）。器の山から取った空の器（blank）からは作れない
+  stock?: boolean; // 焼く前の中身が入った山から取る品（ドリアなど）。器の山から取った空の器（blank）からは作れない。
+  // 品ごとに別の山があり、取った皿は、どの山から取ったか（BakeProgress の stock）を覚えている。同じ器の stock の品は、山で区別する
   stages: BakeStage[]; // 段階（1つ以上）
   finish: BakeFinish; // 仕上げ
+  prep?: PrepYield; // 下調理の行（PREP_TABLE）だけ：焼き上がりを空けるストックと、増える数
 };
 
 // --- 表 ---
-// 4.0 のメニュー一覧のうち、いま実装している2品。値は既存の動き（ドリア = 下段1周、ピザ = 上段1周）と同じ。
+// クック編 C3 のピザ3品の段階：生地 → ソース → チーズ → 4番目の具1杯（仮）→ U
+const pizzaTopStage = (top: keyof typeof PIZZA_TOPS): BakeStage => ({
+  load: [
+    { id: 'dough', count: 1, at: 'all' },
+    { id: 'pizzaSauce', count: 1, at: 'all' },
+    { id: 'pizzaCheese', count: 1, at: 'all' },
+    { id: PIZZA_TOPS[top].load, count: 1, at: 'all' }, // レードル1杯（仮）
+  ],
+  minLoad: [{ id: 'dough', count: 1 }], // バッファローピザと同じ（生地さえあれば流せる。足りないまま焼いたピザは、提供で「そろっていない」）
+  need: 1,
+});
+// 4.0 のメニュー一覧のうち、いま実装している8品（既存の2品 ＋ クック編 C3 の6品。C3 の6品は 2026-11-14 に末尾へ足して有効化）。
+// 既存の2品の値は既存の動き（ドリア = 下段1周、ピザ = 上段1周）と同じ。
 export const BAKE_TABLE: readonly BakeDish[] = [
   // ミラノドリア：ドリアスタックから取った皿（中身はそのまま）を、L（下段1周 = 上段2周）→ 下駄に乗せる
   { id: 'milanoDoria', vessel: 'doria', stock: true, stages: [{ load: [], need: 2 }], finish: { base: 'geta' } },
@@ -86,7 +106,34 @@ export const BAKE_TABLE: readonly BakeDish[] = [
     ],
     finish: { base: 'pizzaPlate' },
   },
+  // 焼きチーズミラノドリア：専用の山（仮：ミラノドリアとは別の山）→ L → 下駄に乗せ、パセリを振る
+  { id: 'cheeseMilanoDoria', vessel: 'doria', stock: true, stages: [{ load: [], need: 2 }], finish: { base: 'geta', extras: ['parsley'] } },
+  // たらこのドリア：専用の山（たらこソース・シュリンプ3つ・グランモラビアがのった状態）→ L → 下駄
+  { id: 'tarakoDoria', vessel: 'doria', stock: true, stages: [{ load: [], need: 2 }], finish: { base: 'geta' } },
+  // たらこのグラタン：専用の山（仮：パセリは最初からのっている）→ L → 下駄
+  { id: 'tarakoGratin', vessel: 'doria', stock: true, stages: [{ load: [], need: 2 }], finish: { base: 'geta' } },
+  // ピザ3品：生地 → ソース → チーズ → 具（野菜ときのこ・ソーセージ・コーン）1杯（仮）→ U → お皿に移す
+  { id: 'vegMushroomPizza', vessel: 'pizza', stages: [pizzaTopStage('vegMushroom')], finish: { base: 'pizzaPlate' } },
+  { id: 'sausagePizza', vessel: 'pizza', stages: [pizzaTopStage('sausage')], finish: { base: 'pizzaPlate' } },
+  { id: 'cornPizza', vessel: 'pizza', stages: [pizzaTopStage('corn')], finish: { base: 'pizzaPlate' } },
 ];
+
+// 下調理の表（クック編設計書 4.0「下調理」・4.5 / C5）。伝票には出ないので、品の表（BAKE_TABLE）には入れない。
+// 流す・焼け具合・器に入る数は、品の表と同じ決まりで調べる（flowRows）。焼き上がりは、受け台の代わりにストック容器（prepStock）に空ける
+// ポテト：冷凍の袋の1/4 を大きめの焼成パッドに入れて → L（下段1周）→ ストック容器へ（パッド1つで potatoPerLargePad 個）
+export const PREP_TABLE: readonly BakeDish[] = [
+  {
+    id: 'potatoPrep',
+    name: 'ポテトの下調理',
+    vessel: 'largePad',
+    stages: [{ load: [{ id: 'frozenPotato', count: 1, at: 'all' }], need: 2 }],
+    finish: { base: 'prepStock' },
+    prep: { stock: 'potato', per: 'potatoPerLargePad' },
+  },
+];
+
+// 流す・焼け具合・器に入る数を調べるときの表（品の表に、下調理の表を足す）
+const flowRows = (table: readonly BakeDish[]): readonly BakeDish[] => (PREP_TABLE.every((p) => table.includes(p)) ? table : [...table, ...PREP_TABLE]);
 
 // --- 名前（案内用）---
 
@@ -99,8 +146,12 @@ export const BAKE_LOAD_NAME: Record<BakeLoadId, { name: string; unit: string }> 
   chicken: { name: 'チキン', unit: '枚' },
   shrimp: { name: 'シュリンプ', unit: 'つ' },
   potato: { name: 'ポテト', unit: '個' },
+  frozenPotato: { name: '冷凍ポテト（袋の1/4）', unit: '回分' },
+  spicyChicken: { name: '辛味チキン', unit: 'つ' },
   corn: { name: 'コーン', unit: '杯' },
   sausage: { name: 'ソーセージ', unit: '本' },
+  vegMushroom: { name: '野菜ときのこ', unit: '杯' },
+  slicedSausage: { name: 'ソーセージ（輪切り）', unit: '杯' },
 };
 
 // name = 案内の「→ ヘラではがす」、before = 「ヘラではがしてから流す」
@@ -124,6 +175,7 @@ export const BAKE_BASES: Record<BakeBase, { name: string; hint: string; moveFrom
   geta: { name: '下駄', hint: '下駄に乗せてから出す（提供台の左の下駄の山をクリック）' },
   pizzaPlate: { name: 'ピザのお皿', hint: 'お皿に入れてから出す（提供台の左のピザのお皿を台に置いて、ピザを入れる）', moveFrom: 'pizza' },
   board: { name: '板', hint: '板に乗せてから出す（提供台の左の板の山をクリック）' },
+  prepStock: { name: 'ストック容器', hint: '下調理は提供しない（1台目の具材台のストック容器に空ける）' },
 };
 
 // 器ごとの決まり。pizzaBuild = 中身を既存の PizzaBuild（生地・ソース・チーズ・モッツァレラ）でも数える器
@@ -139,7 +191,8 @@ export const BAKE_VESSELS: Record<BakeStyle, { pizzaBuild: boolean }> = {
 };
 
 // 品の名前（メニューにない id はそのまま。テスト用の表など）
-export const dishName = (id: string): string => MENU.find((m) => m.id === id)?.name ?? id;
+export const dishName = (id: string): string =>
+  MENU.find((m) => m.id === id)?.name ?? PREP_TABLE.find((d) => d.id === id)?.name ?? id;
 
 export function getBakeDish(id: string, table: readonly BakeDish[] = BAKE_TABLE): BakeDish | null {
   return table.find((d) => d.id === id) ?? null;
@@ -207,21 +260,38 @@ export function pizzaLoad(p: PizzaBuild): BakeLoad {
   if (p.sauce) out.pizzaSauce = 1;
   if (p.cheese) out.pizzaCheese = 1;
   if (p.mozz > 0) out.mozzarella = p.mozz;
+  if (p.top) out[PIZZA_TOPS[p.top].load] = 1;
   return out;
+}
+
+// ピザの名前（表の品のそろった中身と同じなら、その品名。そうでなければ、のっている物で決まる名前 = pizza.ts の pizzaName）
+export function pizzaTitle(p: PizzaBuild, table: readonly BakeDish[] = BAKE_TABLE): string {
+  const load = pizzaLoad(p);
+  const d = table.find((x) => BAKE_VESSELS[x.vessel].pizzaBuild && sameLoad(load, fullLoad(x)));
+  return d ? dishName(d.id) : pizzaName(p);
 }
 
 // --- 焼き皿の見方 ---
 
 // 焼き皿（手に持つ皿・ベルトの上の皿・お皿に移した中身）を、表と比べられる形にしたもの
 // blank = 器の山から取った空の器（焼く前の中身が入った山の品 stock には当てはまらない）
-export type BakeView = { vessel: BakeStyle; loaded: BakeLoad; stage: number; cares: readonly BakeCare[]; finishes: readonly BakeFinishId[]; blank?: boolean };
+// stock = どの品の山から取った皿か（省略 = その器の、表の最初の山の品）
+export type BakeView = { vessel: BakeStyle; loaded: BakeLoad; stage: number; cares: readonly BakeCare[]; finishes: readonly BakeFinishId[]; blank?: boolean; stock?: string };
 type ProgressLike = { style: BakeStyle; pizza?: PizzaBuild } & BakeProgress;
 
 export function viewOf(x: ProgressLike): BakeView {
   const pizza = x.pizza ?? (BAKE_VESSELS[x.style].pizzaBuild ? sauceCheesePizza() : null);
   let loaded: BakeLoad = pizza ? pizzaLoad(pizza) : {};
   if (x.loaded) for (const id of LOAD_IDS) if (countOf(x.loaded, id) > 0) loaded = { ...loaded, [id]: countOf(loaded, id) + countOf(x.loaded, id) };
-  return { vessel: x.style, loaded, stage: x.stage ?? 0, cares: x.cares ?? [], finishes: x.finishes ?? [], ...(x.blank ? { blank: true } : {}) };
+  return {
+    vessel: x.style,
+    loaded,
+    stage: x.stage ?? 0,
+    cares: x.cares ?? [],
+    finishes: x.finishes ?? [],
+    ...(x.blank ? { blank: true } : {}),
+    ...(x.stock ? { stock: x.stock } : {}),
+  };
 }
 
 // 進み具合のうち、何かあるものだけ（何もない項目は持たせない。既存の2品の皿は、いままでと同じ形になる）
@@ -232,24 +302,45 @@ export function progressOf(x: BakeProgress): BakeProgress {
   if (x.cares?.length) out.cares = [...x.cares];
   if (x.finishes?.length) out.finishes = [...x.finishes];
   if (x.blank) out.blank = true;
+  if (x.stock) out.stock = x.stock;
   return out;
 }
 
 // 見た目の違い（段階・中身・手入れ・仕上げ）を区別する文字列（描き直しが要るか調べるため）
 export function progressSignature(x: BakeProgress): string {
   const loaded = LOAD_IDS.filter((id) => countOf(x.loaded ?? {}, id) > 0).map((id) => `${id}${countOf(x.loaded!, id)}`);
-  return `${x.stage ?? 0}|${loaded.join(',')}|${(x.cares ?? []).join(',')}|${[...(x.finishes ?? [])].sort().join(',')}${x.blank ? '|blank' : ''}`;
+  return `${x.stage ?? 0}|${loaded.join(',')}|${(x.cares ?? []).join(',')}|${[...(x.finishes ?? [])].sort().join(',')}${x.blank ? '|blank' : ''}${x.stock ? `|stock:${x.stock}` : ''}`;
 }
 
+// --- 中身の入った山（ドリア4品）---
+
+// その器の、表の最初の山の品（山の指定を省略した皿は、この品。既存のドリアの山 = ミラノドリア）。山の品がない器は null
+export function defaultStock(vessel: BakeStyle, table: readonly BakeDish[] = BAKE_TABLE): string | null {
+  return table.find((d) => d.vessel === vessel && d.stock)?.id ?? null;
+}
+
+// 皿がどの品の山から取った物か（省略 = その器の最初の山の品）
+const stockOf = (view: BakeView, table: readonly BakeDish[]): string | null => view.stock ?? defaultStock(view.vessel, table);
+
+// 山（dish = どの品の山か。省略 = 最初の山）から取った皿の進み具合。最初の山の品は、何も持たせない（既存のミラノドリアの皿と同じ形）
+export function stockProgress(vessel: BakeStyle, dish: string | undefined, table: readonly BakeDish[] = BAKE_TABLE): BakeProgress {
+  return dish && dish !== defaultStock(vessel, table) ? { stock: dish } : {};
+}
+
+// 空の器・別の山の皿は、その山の品には当てはまらない
+const stockMismatch = (dish: BakeDish, view: BakeView, table: readonly BakeDish[]): boolean =>
+  dish.stock === true && (view.blank === true || stockOf(view, table) !== dish.id);
+
 // その品の i 番目の段階に、この皿が当てはまるか（器・中身・手入れ）。空の器の山から取った器は、中身の入った山から取る品（stock）には当てはまらない
-export function matchesAt(dish: BakeDish, view: BakeView, i: number): boolean {
-  if (view.blank && dish.stock) return false;
+export function matchesAt(dish: BakeDish, view: BakeView, i: number, table: readonly BakeDish[] = BAKE_TABLE): boolean {
+  if (stockMismatch(dish, view, table)) return false;
   return dish.vessel === view.vessel && i < dish.stages.length && fits(view.loaded, stageRange(dish, i)) && hasAll(view.cares, caresUpTo(dish, i));
 }
 
 // i 番目の段階に当てはまる品（複数あれば、必要な時間は同じ。tableProblems で縛っている）
+// 下調理の表（PREP_TABLE）の行も含む
 export function candidatesAt(view: BakeView, i: number, table: readonly BakeDish[] = BAKE_TABLE): BakeDish[] {
-  return table.filter((d) => matchesAt(d, view, i));
+  return flowRows(table).filter((d) => matchesAt(d, view, i, table));
 }
 
 export const needSeconds = (stage: BakeStage, cfg: OvenTimes): number => stage.need * cfg.ovenUpperTime;
@@ -302,13 +393,13 @@ export function flowPlan(item: BakeDishLike, table: readonly BakeDish[] = BAKE_T
   if (dishes.length > 0) return { ok: true, stage, cooked: next ? 0 : item.cooked, dishes };
 
   // 流せない理由。この皿が向かっている品（中身が、その段階のそろった中身を超えていない品）のうち、最初のものに足りない物・手入れを出す
-  const toward = table.filter(
+  const toward = flowRows(table).filter(
     (d) =>
       d.vessel === view.vessel &&
-      !(view.blank && d.stock) &&
+      !stockMismatch(d, view, table) &&
       stage < d.stages.length &&
       within(view.loaded, stageRange(d, stage).max) &&
-      (!next || matchesAt(d, { ...view, loaded: clampLoad(view.loaded, stageRange(d, view.stage).max) }, view.stage)),
+      (!next || matchesAt(d, { ...view, loaded: clampLoad(view.loaded, stageRange(d, view.stage).max) }, view.stage, table)),
   );
   if (toward.length === 0) return { ok: false, reason: next ? 'もう焼けている（入口には流せない）' : 'この中身の料理はない（流せない）' };
   const d = toward[0];
@@ -327,9 +418,9 @@ function clampLoad(load: BakeLoad, max: BakeLoad): BakeLoad {
 
 // --- 入れすぎの防止 ---
 
-// 器に入る数の上限（その器を使う、どの品のそろった中身よりも多くは入らない）
+// 器に入る数の上限（その器を使う、どの品（下調理も含む）のそろった中身よりも多くは入らない）
 export function vesselCapacity(vessel: BakeStyle, id: BakeLoadId, table: readonly BakeDish[] = BAKE_TABLE): number {
-  return Math.max(0, ...table.filter((d) => d.vessel === vessel).map((d) => countOf(fullLoad(d), id)));
+  return Math.max(0, ...flowRows(table).filter((d) => d.vessel === vessel).map((d) => countOf(fullLoad(d), id)));
 }
 
 // この皿に、もう1つのせられるか
@@ -387,6 +478,47 @@ export function servableDish(item: Item | null, table: readonly BakeDish[] = BAK
   );
 }
 
+// 仕上げを振りすぎた（かけすぎた）品。受け台・中身はそろっていて、その品の仕上げをすべて含むうえに、余計な仕上げがある物。
+// 提供はできるが、注文ミスになる（ヒートの皿にボトルを2回振ったのと同じ決まり）。当てはまらなければ null
+export function overFinishedDish(item: Item | null, table: readonly BakeDish[] = BAKE_TABLE): BakeDish | null {
+  const s = servedOf(item);
+  if (!s || servableDish(item, table)) return null;
+  return (
+    finishedCandidates(s, table).find(
+      (d) => d.finish.base === s.base && sameLoad(s.view.loaded, fullLoad(d)) && containsMulti(s.view.finishes, d.finish.extras ?? []),
+    ) ?? null
+  );
+}
+
+// a が b をすべて含むか（個数も。順序は問わない）
+function containsMulti<T>(a: readonly T[], b: readonly T[]): boolean {
+  const rest = [...a];
+  return b.every((x) => {
+    const i = rest.indexOf(x);
+    if (i < 0) return false;
+    rest.splice(i, 1);
+    return true;
+  });
+}
+
+// ボトルで振る（かける）と、焼き物の仕上げになる物（bottle.ts の BOTTLE_BAKE_FINISH）を、この焼き皿に振れるか。
+// 受け台に乗せた焼き上がりの器で、その器の品のどれかが、その仕上げを使うとき（表にない仕上げは振れない）。回数は cfg の上限まで
+export function canFinishWith(
+  item: Item | null,
+  finish: BakeFinishId | undefined,
+  cfg: Pick<GameConfig, 'maxBakeFinishes'>,
+  table: readonly BakeDish[] = BAKE_TABLE,
+): boolean {
+  if (!finish || item?.kind !== 'bakeDish' || baseOf(item) === null || item.state !== 'baked') return false;
+  if ((item.finishes ?? []).length >= cfg.maxBakeFinishes) return false;
+  return table.some((d) => d.vessel === item.style && (d.finish.extras ?? []).includes(finish));
+}
+
+// 仕上げを1回足した焼き皿（元の item は書き換えない）
+export function withFinish<T extends Extract<Item, { kind: 'bakeDish' }>>(item: T, finish: BakeFinishId): T {
+  return { ...item, finishes: [...(item.finishes ?? []), finish] };
+}
+
 // 手に持った焼き皿を、その受け台に乗せられる・移せるか（最後の段階が焼き上がりで、受け台がそれの品）
 export function canTakeBase(item: Item | null, base: BakeBase, table: readonly BakeDish[] = BAKE_TABLE): boolean {
   if (item?.kind !== 'bakeDish' || baseOf(item) !== null) return false;
@@ -398,7 +530,7 @@ export function canTakeBase(item: Item | null, base: BakeBase, table: readonly B
 export function serveHint(item: Item | null, table: readonly BakeDish[] = BAKE_TABLE): string | null {
   const s = servedOf(item);
   if (!s) return null;
-  const ready = servableDish(item, table);
+  const ready = servableDish(item, table) ?? overFinishedDish(item, table); // 振りすぎも、出せる（ヒートの皿と同じく、出すと注文ミス）
   if (ready) return `左クリック：${dishName(ready.id)}を提供台に出す`;
   if (s.state === 'burnt') return '焦げていて提供できない（右クリックで捨てる）';
   if (s.state === 'half') return '生焼けで提供できない（もう一度、入口に流して焼く）';
@@ -427,13 +559,33 @@ export function bakedMenus(menus: readonly MenuItem[] = MENU): MenuItem[] {
   return menus.filter((m) => formOf(m) === 'bake');
 }
 
+// --- 焼き方の要約（iPad の一覧のカードの一言。クック編設計書 4.9）---
+
+// 1つの段階の段と周回。必要な時間（U の倍数）が偶数なら下段（下段1周 = 上段2周）、奇数なら上段で数える
+export function stagePass(stage: BakeStage): string {
+  return stage.need % 2 === 0 ? `下段${stage.need / 2}周` : `上段${stage.need}周`;
+}
+
+// 品の焼き方の要約（例：「下段1周 → 下駄」「上段1周 → ピザのお皿」「下段1周 → 下駄 → パセリ」）。
+// 段階ごとに、流す前の手入れ（ヘラではがす）と段・周回を並べ、最後に受け台と仕上げを足す
+export function bakeSummary(dish: BakeDish): string {
+  const parts: string[] = [];
+  for (const stage of dish.stages) {
+    for (const care of stage.care ?? []) parts.push(BAKE_CARE_NAME[care].name);
+    parts.push(stagePass(stage));
+  }
+  parts.push(BAKE_BASES[dish.finish.base].name);
+  for (const extra of dish.finish.extras ?? []) parts.push(BAKE_FINISH_NAME[extra]);
+  return parts.join(' → ');
+}
+
 // --- 表の整合性 ---
 // 守れていない決まりの一覧（空なら OK）。テストで BAKE_TABLE が空になることを確かめる
 //   ① 同じ器・同じ中身・同じ段階で当てはまる品どうしは、必要な時間が同じ
 //   ② 必要な時間は U の整数倍（1以上）
 //   ③ ある品の流す前の中身（1回目）が、同じ器の別の品（同じ品も含む）の途中（2回目以降）の中身と区別できる
 //   ④ 流せる最低限は、そろった中身を超えない
-//   ⑤ 器・段階・仕上げがまったく同じ品は、2つ置かない（提供のときに区別できない）
+//   ⑤ 器・段階・仕上げがまったく同じ品は、2つ置かない（提供のときに区別できない。中身の入った山から取る品どうしは、山で区別できるのでよい）
 //   ⑥ id が重複しない
 export function tableProblems(table: readonly BakeDish[] = BAKE_TABLE): string[] {
   const out: string[] = [];
@@ -458,7 +610,8 @@ export function tableProblems(table: readonly BakeDish[] = BAKE_TABLE): string[]
             out.push(`① ${a.id} と ${b.id}：${i + 1}回目の中身が同じなのに、必要な時間が違う`);
           }
         }
-        if (a.id < b.id && JSON.stringify([a.stages, a.finish]) === JSON.stringify([b.stages, b.finish])) {
+        // 中身の入った山から取る品（stock）どうしは、山で区別できる（皿がどの山から取ったかを覚えている）ので、同じでもよい
+        if (a.id < b.id && !(a.stock && b.stock) && JSON.stringify([a.stages, a.finish]) === JSON.stringify([b.stages, b.finish])) {
           out.push(`⑤ ${a.id} と ${b.id}：段階と仕上げがまったく同じ`);
         }
       }
