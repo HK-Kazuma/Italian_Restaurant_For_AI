@@ -2797,6 +2797,17 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
     return l;
   };
 
+  // 作業台（具材台）の上の物の名前は、視点を合わせたときだけ出す。gateHover(ラベル, 視点が合っているか) で登録する。
+  // managed = true は、見せる・隠すを別の場所（sync）が決めているラベル（そちらが見せるときだけ、視点が合っていれば出す）。false は、登録すると、合わせるまで隠す
+  const sameTarget = (a: Target, b: Target | null): boolean =>
+    b !== null && a.kind === b.kind && (a as { id?: unknown }).id === (b as { id?: unknown }).id && (a as { index?: unknown }).index === (b as { index?: unknown }).index;
+  const hoverGates: { label: Label; match: (hover: Target | null) => boolean; managed: boolean }[] = [];
+  const gateHover = (label: Label, match: Target | ((hover: Target | null) => boolean), managed = false): Label => {
+    hoverGates.push({ label, match: typeof match === 'function' ? match : (hover) => sameTarget(match, hover), managed });
+    if (!managed) label.sprite.visible = false;
+    return label;
+  };
+
   // --- 正面：IHコンロ（上面は未実装のプレースホルダー）と、その下の鍋洗浄機・鍋置き場 ---
   const CAB = 0x8c8f94;
   scene.add(box(3, 0.08, 1, CAB, 0, 0.76, -1.8)); // 天板
@@ -3193,7 +3204,6 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
     const d = DEV_PIZZA_SHELF;
     addShelfStack(d.counter, d.tier, d.slot, 'pizza', { kind: 'ovenStock', style: 'pizza' }, OVEN_STOCK_NAME.pizza, false);
   }
-  decor('具材台（仮）', OVEN_COUNTER.x - 0.3, 1.1, OVEN_COUNTER.z + 0.5, 0.5);
 
   // 油のはねる粒（焼けた鉄板を出口から取ってから cfg.sizzleSeconds 秒。bake.ts の isSizzling。クック編 C7）。器を表示する場所ごとに1つ
   const addSizzle = (parent: THREE.Object3D, spread = 0.3): Sizzle => {
@@ -3205,9 +3215,9 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
   // 作業枠（1台目の具材台の、部屋の中央側の縁に3つ。layout.ts の WORK_FRAMES）：3列系の器・受け台・小皿を置く。置いた物は state.workFrames の通りに表示する
   const workFrameViews: ItemView[] = [];
   const workFrameSizzles: Sizzle[] = [];
-  WORK_FRAMES.slots.forEach((f, i) => {
+  const addWorkFrame = (i: number, wx: number, wz: number) => {
     const frame = new THREE.Group();
-    frame.position.set(OVEN_COUNTER.x + f.xr, 0.9, OVEN_COUNTER_ZS[WORK_FRAMES.counter] + f.zr);
+    frame.position.set(wx, 0.9, wz);
     frame.add(box(WORK_FRAMES.w, 0.006, WORK_FRAMES.d, 0xcfc4ae, 0, 0.003, 0)); // 枠の印（置き場の板）
     for (const sz of [-1, 1]) frame.add(box(WORK_FRAMES.w, 0.012, 0.012, 0x8a7a5e, 0, 0.006, (sz * WORK_FRAMES.d) / 2)); // 枠の線（長い辺）
     for (const sx of [-1, 1]) frame.add(box(0.012, 0.012, WORK_FRAMES.d, 0x8a7a5e, (sx * WORK_FRAMES.w) / 2, 0.006, 0)); // 枠の線（短い辺）
@@ -3219,8 +3229,10 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
     interactables.push(frame);
     workFrameViews.push(new ItemView(content));
     workFrameSizzles.push(addSizzle(content));
-  });
-  decor('作業枠', OVEN_COUNTER.x + WORK_FRAMES.slots[0].xr, 1.35, OVEN_COUNTER_ZS[WORK_FRAMES.counter], 0.4);
+  };
+  WORK_FRAMES.slots.forEach((f, i) => addWorkFrame(i, OVEN_COUNTER.x + f.xr, OVEN_COUNTER_ZS[WORK_FRAMES.counter] + f.zr));
+  // 提供台側の左の台の作業枠（具材台の3つのあとの番号）
+  WORK_FRAMES.leftSlots.forEach((f, k) => addWorkFrame(WORK_FRAMES.slots.length + k, LEFT_COUNTER.x + f.x, LEFT_COUNTER.z + f.z));
 
   // 台の上に置いた器（作業台・提供台のまわり。クック編 C7）：置くたびに作り、取ったら片づける（state.restDishes の通りに表示する）。
   // 狙える当たり判定は、器の大きさの見えない箱
@@ -3255,7 +3267,7 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
     scene.add(hook);
     interactables.push(hook);
   });
-  decor('やっとこ・ヘラ（F）', TOOL_HOOKS.x + 0.05, 1.08, OVEN_COUNTER_ZS[TOOL_HOOKS.counter] + (TOOL_HOOKS.zr.tongs + TOOL_HOOKS.zr.spatula) / 2, 0.42);
+  gateHover(decor('やっとこ・ヘラ（F）', TOOL_HOOKS.x + 0.05, 1.08, OVEN_COUNTER_ZS[TOOL_HOOKS.counter] + (TOOL_HOOKS.zr.tongs + TOOL_HOOKS.zr.spatula) / 2, 0.42), (h) => h?.kind === 'toolHook');
 
   // 台の上にべた置きした道具（GameState.toolSpots）。長い辺を z 方向に寝かせ、中心を置き場所に合わせる。置いていない間は見せない
   const placedTools = {} as Record<ToolId, THREE.Group>;
@@ -3302,7 +3314,7 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
       scene.add(bag);
       interactables.push(bag);
     });
-    decor('冷凍の袋', FROZEN_SHELF_SPAN.x + 0.1, FROZEN_SHELF.y + FROZEN_SHELF.bag.h + 0.15, midZ, 0.45);
+    gateHover(decor('冷凍の袋', FROZEN_SHELF_SPAN.x + 0.1, FROZEN_SHELF.y + FROZEN_SHELF.bag.h + 0.15, midZ, 0.45), (h) => h?.kind === 'frozenBag');
   }
 
   // 具材台の天板のストック容器（layout.ts の COOK_BIN_SPOTS）。数に限りのある容器（ポテト）は、残りの数をラベルに出し、少ないと色を変える
@@ -3318,7 +3330,7 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
     setTarget(group, { kind: 'cookBin', id });
     scene.add(group);
     interactables.push(group);
-    const label = decor(COOK_BINS[id].name, x, 1.13, z, 0.42);
+    const label = gateHover(decor(COOK_BINS[id].name, x, 1.13, z, 0.42), { kind: 'cookBin', id });
     binViews.push({ id, items, fillTop, label, shown: -1 });
   }
 
@@ -3331,7 +3343,8 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
     setTarget(group, target);
     scene.add(group);
     interactables.push(group);
-    return decor(label, at.x, labelY, at.z, labelW);
+    const l = decor(label, at.x, labelY, at.z, labelW);
+    return target.kind === 'pizzaPlateStack' ? l : gateHover(l, target);
   };
   // ピザ生地のスタック
   const doughStack = new THREE.Group();
@@ -3369,7 +3382,7 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
   scene.add(pileGroup);
   interactables.push(pileGroup);
   let pileCount = -1;
-  const pileLabel = decor('', 0, 1.2, 0, 0.8);
+  const pileLabel = gateHover(decor('', 0, 1.2, 0, 0.8), { kind: 'panPile' }, true);
   pileLabel.sprite.visible = false;
   // 置こうとしている場所の印（丸い板）。置ける間は緑、置けないときは赤
   const propGhost = new THREE.Mesh(
@@ -3397,7 +3410,7 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
     setTarget(slot, { kind: 'pizzaSlot', index: i });
     scene.add(slot);
     interactables.push(slot);
-    const label = decor('', at.x, 1.25, at.z, 0.9);
+    const label = gateHover(decor('', at.x, 1.25, at.z, 0.9), { kind: 'pizzaSlot', index: i }, true);
     label.sprite.visible = false;
     pizzaSlotViews.push({ view: new ItemView(slot), label });
   });
@@ -4159,7 +4172,7 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
       const v = bottleViews.get(id)!;
       const spot = state.bottles[id];
       v.group.visible = spot !== null;
-      v.label.sprite.visible = spot !== null;
+      v.label.sprite.visible = spot !== null && (spot.surface !== 'prep' || (hover?.kind === 'bottle' && hover.id === id)); // 作業台のボトルは、視点を合わせたときだけ名前を出す
       if (spot) {
         const o = surfaceOrigin(spot.surface);
         v.group.position.set(o.x + spot.x, 0.9, o.z + spot.z);
@@ -4172,7 +4185,7 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
       const v = freeTrayViews.get(id)!;
       const onTable = state.trays[id] === 'table';
       v.group.visible = onTable;
-      v.label.sprite.visible = onTable;
+      v.label.sprite.visible = onTable && (state.freeTraySpot[id].surface !== 'prep' || (hover?.kind === 'tableTray' && hover.id === id));
       if (onTable) {
         const spot = state.freeTraySpot[id];
         const o = surfaceOrigin(spot.surface);
@@ -4410,6 +4423,9 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
       label.sprite.visible = spec !== null;
       if (spec) label.setText(spec.text, spec.color);
     });
+
+    // 作業台の上の物の名前：視点を合わせたときだけ出す（gateHover で登録したラベル）
+    for (const g of hoverGates) g.label.sprite.visible = g.match(hover) && (!g.managed || g.label.sprite.visible);
 
     const w = state.washer;
     washerView.show(w.pot ? { kind: 'pot', pot: w.pot } : null);

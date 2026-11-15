@@ -171,7 +171,7 @@ export class Game {
       getaSpot: { ...(layout?.getaSpot ?? GETA_HOME) },
       getaMoving: false,
       prepStock: initialPrepStock(this.cfg), // 下調理のストック（ポテト）。チュートリアルも、この十分な数から始まる
-      workFrames: WORK_FRAMES.slots.map(() => null),
+      workFrames: [...WORK_FRAMES.slots, ...WORK_FRAMES.leftSlots].map(() => null),
       restDishes: [], // 台の上に置いた使い終わった器（クック編 C7）。毎回、空から
       // 引き継ぎがなければ、冷蔵庫にしまってあるボトル（null）以外は、もとの場所の台の上
       bottles: Object.fromEntries(

@@ -433,7 +433,7 @@ export type GameState = {
   getaMoving: boolean; // 下駄の山を右クリックで持ち上げている最中（手とは別。台に右クリックで置く）
   prepStock: Record<PrepStockId, number>; // 下調理のストックの数（ポテト。最初は config の potatoStockStart。取ると減る（トライアルは減らない）、下調理したパッドを空けると増える）
   restDishes: RestDish[]; // 台の上に自由に置いた、使い終わった器・焼けた器（作業台・提供台のまわり。クック編 C7）
-  workFrames: (WorkFrameItem | null)[]; // 1台目の具材台の作業枠（3つ。layout.ts の WORK_FRAMES）。置いてある物、null = 空き
+  workFrames: (WorkFrameItem | null)[]; // 作業枠（1台目の具材台に3つ + 提供台側の左の台に2つ。layout.ts の WORK_FRAMES）。置いてある物、null = 空き
   bottles: Record<BottleId, BottleSpot>; // 台の上のボトル
   bottleShakeAt: number | null; // 手に持ったボトルを最後に振った（かけた）ゲーム内時刻。振る動きの表示に使う
   hotWater: (Pack | null)[]; // 熱湯に浸けているパック（3×3の9か所、左上から横に数える）。null = 空き

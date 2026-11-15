@@ -311,6 +311,9 @@ export const WORK_FRAMES = {
   w: WORK_FRAME_W,
   d: WORK_FRAME_D,
   slots: [-1, 0, 1].map((k) => ({ xr: OVEN_COUNTER.width / 2 - WORK_FRAME_EDGE - WORK_FRAME_W / 2, zr: k * (WORK_FRAME_D + WORK_FRAME_GAP) })),
+  // 提供台側の左の台（提供台より壁側のあき地）の、作業枠2つ。位置は左の台の中心からの相対（x: 右、z: 手前）。
+  // 具材台の3つのあとの番号（state.workFrames の 3、4 番目）。右の端（x）に寄せ、提供台のそばの下駄の山・小皿の山より壁側に、z 方向に並べる
+  leftSlots: [0, 1].map((k) => ({ x: 0.4, z: 1.6 + WORK_FRAME_D / 2 + k * (WORK_FRAME_D + WORK_FRAME_GAP) })),
 };
 
 // 道具のフック（クック編 C4。仮）：1台目の具材台の、部屋の中央側の縁（天板のすぐ下）に、やっとこ・ヘラを掛ける。
@@ -333,6 +336,7 @@ export const COOK_SIDE_STACKS = {
 };
 // 左の台の上に、もとから置いてある物（中心の相対位置と、半分の大きさ。r があれば、半径 r の丸）。ボトル・容器・ピザのお皿・下駄の山を重ねて置けない
 export const LEFT_FIXTURES: readonly { x: number; z: number; hx: number; hz: number; r?: number }[] = [
+  ...WORK_FRAMES.leftSlots.map((f) => ({ x: f.x, z: f.z, hx: WORK_FRAMES.w / 2, hz: WORK_FRAMES.d / 2 })), // 作業枠（提供台側の左の台）
   { x: COOK_SIDE_STACKS.board.x, z: COOK_SIDE_STACKS.board.z, hx: BOARD.w / 2, hz: BOARD.d / 2 },
   { x: COOK_SIDE_STACKS.small.x, z: COOK_SIDE_STACKS.small.z, hx: COOK_SIDE_STACKS.small.r, hz: COOK_SIDE_STACKS.small.r, r: COOK_SIDE_STACKS.small.r },
 ];
@@ -353,8 +357,8 @@ export const PIZZA_PLATE_R = 0.25;
 // 提供台の左の、ピザのお皿の山（左の台の中心からの相対位置）。左の台の、提供台より壁側（+z）のあき地にある
 export const PIZZA_PLATE_STACK = { surface: 'left' as const, x: -0.42, z: 1.95, count: 6 };
 
-// チュートリアルで、ピザのお皿を置く場所として指す位置（左の台の、ピザのお皿の山の右のあき地。置ける範囲 PROP_RANGE の中）
-export const PIZZA_PLATE_GUIDE = { surface: 'left' as const, x: 0.25, z: 1.95 };
+// チュートリアルで、ピザのお皿を置く場所として指す位置（左の台の、ピザのお皿の山と提供台のあいだのあき地。置ける範囲 PROP_RANGE の中）
+export const PIZZA_PLATE_GUIDE = { surface: 'left' as const, x: -0.4, z: 1.15 };
 
 // ピザのお皿・鉄板（の山）を、台の上に置ける範囲（台の中心からの相対。丸い物の中心の範囲）。
 //   left（左の台）：下駄の山と同じ、提供台より壁側（+z）のあき地に限る（皿・トッピングの置き場に重ならない）
