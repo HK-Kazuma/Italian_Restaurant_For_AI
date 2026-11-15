@@ -527,8 +527,8 @@ export function flatRange(surface: SurfaceId, halfW: number, halfD: number): { m
 }
 // やっとこ・ヘラの最初の置き場所（作業台のオーブン側の端。トレー置き場より、オーブン側）。作業台の中心からの相対
 export const TOOL_HOME = {
-  tongs: { surface: 'prep' as const, x: -0.5, z: OVEN_COUNTER_ZS[0] - OVEN_COUNTER_ROW.z - 0.5 },
-  spatula: { surface: 'prep' as const, x: -0.5, z: OVEN_COUNTER_ZS[0] - OVEN_COUNTER_ROW.z - 0.38 },
+  tongs: { surface: 'prep' as const, x: 0.05, z: OVEN_COUNTER_ZS[0] - OVEN_COUNTER_ROW.z - 0.5 },
+  spatula: { surface: 'prep' as const, x: 0.05, z: OVEN_COUNTER_ZS[0] - OVEN_COUNTER_ROW.z - 0.38 },
 };
 // 左の台の提供台に、半分の大きさ (hx, hz) の長方形（中心が x, z。左の台の中心からの相対）が重なるか
 export function overlapsServePass(x: number, z: number, hx: number, hz: number): boolean {
