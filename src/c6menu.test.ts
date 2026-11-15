@@ -12,7 +12,7 @@ import { MENU, getMenu } from './recipe';
 import { serveScore } from './score';
 import { createTicket } from './tickets';
 import { hasTutorial, matchesTarget, tutorialSteps, type GuideAt } from './tutorial';
-import { TUTORIAL_PENDING_C10 } from './testShared';
+import { TUTORIAL_PENDING_C10, followPrep } from './testShared';
 import type { BakeStyle, BottleId, CookBinId, FrozenBagId, Item, Target, Ticket } from './types';
 
 // クック編設計書 4.6（C6）：前菜4品・フォッカチオ5品。
@@ -522,11 +522,27 @@ describe('チュートリアル：9品とも、表から工程を作り、最後
     expect(labels('potatoGrill').some((l) => l.includes('下駄'))).toBe(true);
   });
 
+  it('先頭に、使うケース・パックを冷蔵庫から出す「準備：」の工程が付く（使わない品には付かない）', () => {
+    const labels = (id: string) => tutorialSteps(id, cfg)!.map((s) => s.label);
+    const prep = labels('cheeseFocaccia').filter((l) => l.startsWith('準備：'));
+    expect(prep.some((l) => l.includes('フォッカチオ'))).toBe(true);
+    expect(prep.some((l) => l.includes('ピザチーズ'))).toBe(true);
+    expect(labels('cheeseFocaccia').slice(0, prep.length).every((l) => l.startsWith('準備：'))).toBe(true); // 準備は、先頭にまとまっている
+    expect(labels('spicyChicken').some((l) => l.startsWith('準備：') && l.includes('辛味チキン') && l.includes('袋'))).toBe(true); // パックは、袋を取って作業台に置く
+    expect(labels('tarako').some((l) => l.startsWith('準備：'))).toBe(false);
+    // 本番の最初の状態では、まず冷蔵庫の扉を指す
+    const g = new Game({ ...cfg, fridgeCookSetup: true }, () => 0);
+    g.startPractice();
+    g.startTutorial('spicyChicken');
+    expect(g.tutorialGuide()!.at).toMatchObject({ kind: 'fridgeDoor' });
+  });
+
   for (const id of C6_IDS) {
     it(`${dishName(id)}：矢印のとおりに作ると、提供できて、チュートリアルが完了する`, () => {
-      const g = new Game(cfg, () => 0);
+      const g = new Game({ ...cfg, fridgeCookSetup: true }, () => 0);
       g.startPractice();
       expect(g.startTutorial(id)).toBe(true);
+      followPrep(g); // 先頭の「準備：」（冷蔵庫からケース・パックを出す）
       let lastStep = 0;
       const expectArrowAt = (target: Target) => {
         const guide = g.tutorialGuide();

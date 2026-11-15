@@ -28,7 +28,7 @@ import { MENU, formOf, getMenu } from './recipe';
 import { serveScore } from './score';
 import { createTicket } from './tickets';
 import { hasTutorial, matchesTarget, tutorialSteps, type GuideAt } from './tutorial';
-import { TUTORIAL_PENDING_C10 } from './testShared';
+import { TUTORIAL_PENDING_C10, followPrep } from './testShared';
 import type { Item, PizzaTop, Target, Ticket } from './types';
 
 // クック編設計書 4.3（C3）：ドリア4品・ピザ4品。
@@ -501,9 +501,10 @@ describe('チュートリアル：C3 の6品', () => {
 
   for (const m of C3_IDS.map(getMenu)) {
     it(`${m.name}：矢印のとおりに作ると、提供できて、チュートリアルが完了する`, () => {
-      const g = new Game(cfg, () => 0);
+      const g = new Game({ ...cfg, fridgeCookSetup: true }, () => 0);
       g.startPractice();
       expect(g.startTutorial(m.id)).toBe(true);
+      followPrep(g); // 先頭の「準備：」（冷蔵庫からケース・パックを出す）
       let lastStep = 0;
       const expectArrowAt = (target: Target) => {
         const guide = g.tutorialGuide();

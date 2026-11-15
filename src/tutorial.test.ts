@@ -5,7 +5,7 @@ import { BOTTLE_HOME, PIZZA_PLATE_GUIDE } from './layout';
 import { LANE_OFFSETS, frontS } from './oven';
 import { MENU } from './recipe';
 import { hasTutorial, matchesTarget, tutorialSteps, type GuideAt } from './tutorial';
-import { TUTORIAL_PENDING_C10 } from './testShared';
+import { TUTORIAL_PENDING_C10, followPrep } from './testShared';
 import type { BakeStyle, BottleId, CookBinId, FrozenBagId, PizzaTop, Target, TrayId } from './types';
 
 // --- 設備の指定（game.test.ts と同じ書き方）---
@@ -109,7 +109,7 @@ const c7Pan = 'hamburgPan' as const;
 const boardStack: Target = { kind: 'boardStack' };
 const c7Lane0Inlet = (style: BakeStyle): Target => ({ kind: 'ovenInlet', deck: 'upper', x: LANE_OFFSETS[0], s: frontS(style) }); // 鉄板と並べて流す（左のレーン）
 const c7Lane0Outlet: Target = { kind: 'ovenOutlet', deck: 'upper', lane: 0 };
-const spatulaHook: Target = { kind: 'toolHook', id: 'spatula' };
+const spatulaHook: Target = { kind: 'placedTool', id: 'spatula' }; // 本番の最初の状態では、ヘラは作業台の上に置いてある（フックではない）
 // 鉄板を作業枠0に置いて、1回目の具をのせ、流す
 const c7First = (first: 'patty' | 'chicken', deck: 'upper' | 'lower'): Act[] => [c6Vessel(c7Pan), workFrame(0), c6Bin(first), workFrame(0), workFrame(0), c6Inlet(deck, c7Pan)];
 // 目玉焼き鉄板を作業枠0に置いて、卵2個 → 上段（左のレーン）
@@ -292,7 +292,7 @@ const SCRIPTS: Record<string, Act[]> = {
 };
 
 function newTutorial(menuId: string) {
-  const g = new Game(cfg, () => 0);
+  const g = new Game({ ...cfg, fridgeCookSetup: true }, () => 0); // 本番と同じ最初の状態（チュートリアルは、ケース・パックが作業台に出ている状態から始まる）
   g.startPractice();
   expect(g.startTutorial(menuId)).toBe(true);
   return g;
@@ -301,6 +301,7 @@ function newTutorial(menuId: string) {
 // 台本どおりに操作する。手を打つ前に、矢印がその場所を指していることを確かめる
 function play(menuId: string, acts: Act[], onComplete: ((id: string) => void) | null = null) {
   const g = newTutorial(menuId);
+  followPrep(g); // 先頭の「準備：」（冷蔵庫からケース・パックを出す）
   g.onTutorialComplete = onComplete;
   let lastStep = 0;
   const label = () => `${menuId} 工程${(g.state.tutorial?.step ?? -1) + 1}`;

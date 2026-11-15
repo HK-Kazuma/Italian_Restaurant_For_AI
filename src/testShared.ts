@@ -1,3 +1,5 @@
+import type { Game } from './game';
+import type { Target } from './types';
 // テストだけが使う共有の定数（実装コードからは読まない。ゲームの本体には入らない）。
 
 // チュートリアルのテストの対象から、当面外す品（C7 の鉄板焼き6品のうち、まだ完走テストで裏付けが取れていない品。2026-11-15 に所有者の承認を得て対象外にした）。
@@ -12,3 +14,19 @@
 //
 // 戻し条件：完走テストの台本（tutorial.test.ts の SCRIPTS）を足し、通ったら、その品をこの一覧から外す（一覧が空になったら、この定数ごと消す）。
 export const TUTORIAL_PENDING_C10: readonly string[] = [];
+
+// チュートリアルの先頭の「準備：」の工程（冷蔵庫からケース・パックを出して置く）を、矢印の指すとおりに進める。準備のないメニューでは、何もしない
+export function followPrep(g: Game): void {
+  for (let i = 0; i < 300; i++) {
+    const v = g.tutorialView();
+    if (!v || !v.labels[v.step]?.startsWith('準備：')) return;
+    const guide = g.tutorialGuide();
+    if (!guide) throw new Error(`準備の工程 ${v.step + 1}: 矢印が出ていない`);
+    const at = guide.at;
+    const target: Target = at.kind === 'surfaceSpot' ? { kind: 'tableTop', surface: at.surface, x: at.x, z: at.z } : (at as Target);
+    if (target.kind === 'fridgeDoor') g.rightClick(target);
+    else g.interact(target);
+    g.update(0.01);
+  }
+  throw new Error('準備の工程が終わらない');
+}

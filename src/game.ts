@@ -270,23 +270,10 @@ export class Game {
     if (!steps) return false;
     this.state = this.initialState('playing', 'practice', this.carriedLayout());
     const s = this.state;
-    this.tableCookSetup();
     s.tickets = [createTicket(s.nextTicketId++, getMenu(menuId), s.time)];
     s.nextTicketAt = Infinity; // ほかの伝票は届かない
     s.tutorial = { menuId, step: 0, total: steps.length };
     return true;
-  }
-
-  // チュートリアルでは、ケース・パックは作業台に出てあり、道具はフックに掛かっている状態から始める（冷蔵庫から出す手順は、教えない）
-  private tableCookSetup(): void {
-    const s = this.state;
-    for (const id of CASE_TRAY_IDS) {
-      s.trays[id] = 'table';
-      s.traySpot[id] = CASE_TRAY_IDS.indexOf(id);
-    }
-    BAG_IDS.forEach((id, i) => (s.bags[id] = { at: 'table', spot: legacyBagSpot(i) }));
-    s.toolSpots = { tongs: null, spatula: null };
-    s.tool = null;
   }
 
   // チュートリアルをやめる（最後まで終わったときも、これで終わる）。厨房はそのまま、練習キッチンに戻る（伝票も、また届くようになる）

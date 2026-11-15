@@ -1,16 +1,17 @@
 import { BAKE_BASES, BAKE_CARE_NAME, BAKE_FINISH_NAME, BAKE_LOAD_NAME, CUP_FINISHES, SCOOP_LOADS, SIDE_TABLE, baseOf, fullLoad, getBakeDish, scoopOf, stageRange, type BakeDish, type LoadSpec } from './bake';
 import { BOTTLE_ACTION, BOTTLE_BAKE_FINISH, BOTTLE_BAKE_LOAD, BOTTLE_FRIDGE_ITEM, BOTTLE_IDS, BOTTLE_PLATE, isFridgeBottle } from './bottle';
-import { COOK_BINS, COOK_BIN_IDS, CUP_FILLS, FLIP_LOADS, FROZEN_BAGS, FROZEN_BAG_IDS, SOURCE_RIGHT_TAKE, cupNext } from './cookStock';
+import { BAG_IDS, COOK_BINS, COOK_BIN_IDS, CUP_FILLS, FLIP_LOADS, FROZEN_BAGS, FROZEN_BAG_IDS, SOURCE_RIGHT_TAKE, cupNext } from './cookStock';
 import type { GameConfig } from './config';
-import { FRIDGE_ITEM_IDS } from './fridge';
+import { BAG_FRIDGE_ITEM, FRIDGE_ITEM_IDS, FRIDGE_ITEM_NAME } from './fridge';
 import { INGREDIENTS } from './ingredients';
-import { BAKE_DISHES, BOTTLE_HOME, FREE_TRAY_HOME, OVEN_STOCK_NAME, PIZZA_PLATE_GUIDE, SHELF_STACKS, WORK_FRAMES } from './layout';
+import { BAKE_DISHES, BOTTLE_HOME, FREE_TRAY_HOME, OVEN_STOCK_NAME, PIZZA_PLATE_GUIDE, SHELF_STACKS, WORK_FRAMES, legacyBagSpot } from './layout';
 import { OVEN_DECKS, OVEN_DECK_NAME, bakeTime, isEmerged, laneOfOffset, timeToEmerge } from './oven';
 import { MOZZ_PER_BALL, MOZZ_TOTAL, PIZZA_TOPPING_NAME, isPizzaTop, pizzaOf } from './pizza';
 import { warmTime } from './pack';
 import { isNoodle } from './pot';
 import { getMenu, type MenuItem } from './recipe';
-import { TRAY_FRIDGE_ITEM, TRAY_NAME, TRAY_ZONE, freeTraySpots, isFreeTray } from './tray';
+import { CASE_TRAY_IDS, TRAY_FRIDGE_ITEM, TRAY_NAME, TRAY_ZONE, caseOfTarget, freeTraySpots, isFreeTray } from './tray';
+import type { BagId } from './types';
 import type { BakeBase, BakeCare, BakeFinishId, BakeLoadId, BakeStyle, CupFill, BottleId, CookBinId, FridgeBottleId, FridgeItemId, FridgeUnit, FrozenBagId, GameState, IngredientId, Item, NoodleKind, OvenDeck, OvenDish, PizzaBuild, PizzaTopping, Pot, SurfaceId, Target, TrayId } from './types';
 
 // チュートリアル：練習キッチンで、選んだメニューを「次はここ」と案内されながら作る。
@@ -137,6 +138,7 @@ function fridgeUnitFor(s: GameState, at: GuideAt | null): FridgeUnit {
   let item: FridgeItemId | null = null;
   if (at.kind === 'fridgeTray') item = TRAY_FRIDGE_ITEM[at.id];
   else if (at.kind === 'fridgeBottle') item = BOTTLE_FRIDGE_ITEM[at.id];
+  else if (at.kind === 'fridgeBag') item = BAG_FRIDGE_ITEM[at.id];
   else if (at.kind === 'stock' && (FRIDGE_ITEM_IDS as string[]).includes(at.id)) item = at.id as FridgeItemId;
   return item ? s.fridgeItems[item].unit : 0;
 }
@@ -206,6 +208,15 @@ function makeKit(menu: MenuItem, cfg: GameConfig) {
   const sauce = menu.sauce ?? [];
   const served = (s: GameState) => s.served > 0; // 提供まで済んでいれば、それ以前の工程はすべて終わっている
 
+  // このメニューで使う、クックの具材のケース・パック（工程を作る間に集める。最初に、冷蔵庫から出す準備の工程になる）
+  const needs = { trays: new Set<TrayId>(), bags: new Set<BagId>() };
+  const needTarget = (t: Target) => {
+    const c = caseOfTarget(t);
+    if (c) needs.trays.add(c);
+    else if (t.kind === 'frozenBag') needs.bags.add(t.id);
+    else if (t.kind === 'pizzaSource' && t.id === 'mozzarella') needs.bags.add('mozzarella');
+  };
+
   // 盛り付け中の皿の置き場（なければ -1）と、空いている置き場
   const plateIndex = (s: GameState): number => {
     for (let i = home.from; i < home.to; i++) if (s.plateSlots[i]) return i;
@@ -225,6 +236,39 @@ function makeKit(menu: MenuItem, cfg: GameConfig) {
     allPots(s).some((p) => p.contents.includes(id)) ||
     plateHasAny(s, [id]) ||
     served(s);
+
+  // 準備の工程：このメニューで使うケースを冷蔵庫から取って作業台のトレー置き場に置き、パックを冷蔵庫から取って作業台に置く（工程を作り終わってから呼ぶ）
+  const prep = (): TutorialStep[] => {
+    const steps: TutorialStep[] = [];
+    for (const id of CASE_TRAY_IDS.filter((c) => needs.trays.has(c))) {
+      steps.push(
+        carry({
+          label: `準備：${TRAY_NAME[id]}を冷蔵庫から取って、トレー置き場に置く`,
+          fridge: true,
+          from: () => ({ kind: 'fridgeTray', id }),
+          holding: (s) => s.hand?.kind === 'tray' && s.hand.id === id,
+          to: (s) => ({ kind: 'traySlot', id: 'cook', spot: freeTraySpots(s, 'cook')[0] ?? 0 }),
+          done: (s) => s.trays[id] === 'table' || served(s),
+          hint: (_s, holding) => (holding ? '作業台の緑の印（トレー置き場）を左クリックで置く' : `${TRAY_NAME[id]}を左クリックで取る`),
+        }),
+      );
+    }
+    for (const id of BAG_IDS.filter((b) => needs.bags.has(b))) {
+      const name = FRIDGE_ITEM_NAME[BAG_FRIDGE_ITEM[id]];
+      steps.push(
+        carry({
+          label: `準備：${name}の袋を冷蔵庫から取って、作業台に置く`,
+          fridge: true,
+          from: () => ({ kind: 'fridgeBag', id }),
+          holding: (s) => s.hand?.kind === 'packBag' && s.hand.id === id,
+          to: () => ({ kind: 'surfaceSpot', ...legacyBagSpot(BAG_IDS.indexOf(id)) }),
+          done: (s) => s.bags[id].at === 'table' || served(s),
+          hint: (_s, holding) => (holding ? '作業台の空いている所を左クリックで置く（どこでもよい）' : `${name}の袋を左クリックで取る`),
+        }),
+      );
+    }
+    return steps;
+  };
 
   // 冷蔵庫の扉を開ける（unit: 0 = 最初の冷蔵庫、1 = 右側の冷蔵庫）
   const openFridge = (unit: FridgeUnit = 0): TutorialStep => ({
@@ -609,6 +653,7 @@ function makeKit(menu: MenuItem, cfg: GameConfig) {
 
   // 具を取って、組み立て台の鉄板にのせる（モッツァレラは、全部のせ終わるまで）
   const pizzaTopping = (id: PizzaTopping) => {
+    needTarget({ kind: 'pizzaSource', id });
     const balls = id === 'mozzarella' ? MOZZ_TOTAL / MOZZ_PER_BALL : 1;
     const doneOn = (s: GameState) => pizzaBuilds(s).some((p) => hasTopping(p, id));
     return carry({
@@ -814,6 +859,8 @@ function makeKit(menu: MenuItem, cfg: GameConfig) {
       if (source.kind === 'cup') {
         // 小さい容器を取り、ピザの具の容器で中身を入れて（表の CUP_FILLS の順）、器の空きにのせる
         const binTarget: Target = { kind: 'cookBin', id: source.id };
+        needTarget(binTarget);
+        for (const f of source.fills) needTarget({ kind: 'pizzaSource', id: f });
         const fillNames = source.fills.map((f) => PIZZA_TOPPING_NAME[f]).join(' → ');
         steps.push({
           label: `${COOK_BINS[source.id].name}を取り、${fillNames}を入れて、作業枠の${vesselName}の空きにのせる`,
@@ -840,6 +887,7 @@ function makeKit(menu: MenuItem, cfg: GameConfig) {
       const inHand = (s: GameState) => (s.hand?.kind === 'loadStack' && s.hand.id === handLoad ? s.hand.count : 0);
       const fromTarget: Target =
         source.kind === 'bag' ? { kind: 'frozenBag', id: source.id } : source.kind === 'rightTake' ? { kind: 'pizzaSource', id: source.id } : { kind: 'cookBin', id: source.id };
+      needTarget(fromTarget);
       const verb = source.kind === 'flip' ? `作業枠の${vesselName}を右クリックで${FLIP_LOADS[handLoad]!.verb}` : `作業枠の${vesselName}に入れる`;
       steps.push({
         label: source.kind === 'flip' ? `${BAKE_LOAD_NAME[handLoad].name}を取って、${verb}` : `${name.name}${amount ? `を${amount}` : 'を'}取って、${verb}`,
@@ -1030,6 +1078,7 @@ function makeKit(menu: MenuItem, cfg: GameConfig) {
         });
       } else if (source.kind === 'ladle') {
         const bin = source.id;
+        needTarget({ kind: 'cookBin', id: bin });
         const holding = (s: GameState) => s.hand?.kind === 'sauceLadle' && s.hand.id === finish;
         steps.push({
           label: `${fname}をレードルで1杯取って、作業枠の料理にかける`,
@@ -1116,6 +1165,7 @@ function makeKit(menu: MenuItem, cfg: GameConfig) {
     warmUp,
     warmPackTo,
     serve,
+    prep,
   };
 }
 
@@ -1500,9 +1550,13 @@ export function hasTutorial(menuId: string): boolean {
 
 // メニューの工程の並び。チュートリアルがなければ null
 export function tutorialSteps(menuId: string, cfg: GameConfig): TutorialStep[] | null {
-  const recipe = RECIPES[menuId];
-  if (recipe) return recipe(makeKit(getMenu(menuId), cfg));
+  const recipe = RECIPES[menuId] as ((k: Kit) => TutorialStep[]) | undefined;
   // 手で書いた工程のない焼き物は、表から作る（クック編 C6）
-  const dish = tableDishFor(menuId);
-  return dish ? makeKit(getMenu(menuId), cfg).fromTable(dish) : null;
+  const dish = recipe ? null : tableDishFor(menuId);
+  if (!recipe && !dish) return null;
+  const kit = makeKit(getMenu(menuId), cfg);
+  const steps = recipe ? recipe(kit) : kit.fromTable(dish!);
+  if (!steps) return null;
+  // 先頭に、使うケース・パックを冷蔵庫から出す準備の工程（使わないメニューは、増えない。すでに出してあれば、すぐ終わる）
+  return [...kit.prep(), ...steps];
 }
