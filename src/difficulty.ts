@@ -12,6 +12,9 @@ type TicketTuning = Pick<
 // ストックの決まりのうち、難易度で変える物（クック編 C5。トライアルは、下調理のストックが減らない）
 type StockTuning = Pick<GameConfig, 'prepStockConsume'>;
 
+// 道具の手の決まりのうち、難易度で変える物（クック編 C4。トライアルは、熱い器を素手で取れる）
+type ToolTuning = Pick<GameConfig, 'hotHandling'>;
+
 export type DifficultyDef = {
   id: Difficulty;
   name: string; // 難易度の名前
@@ -21,6 +24,8 @@ export type DifficultyDef = {
   tickets: Partial<TicketTuning>;
   // config.ts のストックの設定を、この難易度で上書きする分（省略 = config.ts のまま）
   stock?: Partial<StockTuning>;
+  // config.ts の道具の手の設定を、この難易度で上書きする分（省略 = config.ts のまま）
+  tools?: Partial<ToolTuning>;
   // 品ごとの出やすさ（recipe.ts の id）。0 = 出ない。書いていない品は 1。比率で決まる。
   // 選んだポジションが担当する品だけに絞ってから掛ける（position.ts の menusFor）
   menuWeights: Record<string, number>;
@@ -34,6 +39,7 @@ export const DIFFICULTIES: readonly DifficultyDef[] = [
     summary: '伝票はゆっくり届き、並ぶのは最大3枚。手順の多いペペロンチーノ・カルボナーラ・ペンネ・きのこのクリームパスタ・小エビのカクテル・蒸し鶏の香味ソースは出ません。',
     tickets: { firstTicketAt: 5, ticketIntervalStart: 40, ticketIntervalEnd: 25, ticketIntervalJitter: 0.15, maxOpenTickets: 3 },
     stock: { prepStockConsume: false }, // 下調理したポテトのストックが減らない
+    tools: { hotHandling: false }, // 熱い器も素手（左クリック）で取れる。ヘラの「はがす」は、手が空のとき左クリック
     menuWeights: { tarako: 3, meat: 2, parma: 2, spinach: 1, shrimpSalad: 2, chickenSalad: 2, cornSoup: 2, peperoncino: 0, carbonara: 0, penne: 0, squidInk: 1, mushroomCream: 0, wakameSalad: 2, shrimpCocktail: 0, steamedChicken: 0, milanoDoria: 3, buffaloPizza: 1 },
   },
   {
@@ -66,7 +72,7 @@ export function getDifficulty(id: Difficulty): DifficultyDef {
 export function configFor(cfg: GameConfig, difficulty: Difficulty | null): GameConfig {
   if (!difficulty) return cfg;
   const d = getDifficulty(difficulty);
-  return { ...cfg, ...d.tickets, ...(d.stock ?? {}) };
+  return { ...cfg, ...d.tickets, ...(d.stock ?? {}), ...(d.tools ?? {}) };
 }
 
 export function isDifficulty(x: string | undefined): x is Difficulty {

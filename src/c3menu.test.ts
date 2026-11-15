@@ -28,6 +28,7 @@ import { MENU, formOf, getMenu } from './recipe';
 import { serveScore } from './score';
 import { createTicket } from './tickets';
 import { hasTutorial, matchesTarget, tutorialSteps, type GuideAt } from './tutorial';
+import { TUTORIAL_PENDING_C10 } from './testShared';
 import type { Item, PizzaTop, Target, Ticket } from './types';
 
 // クック編設計書 4.3（C3）：ドリア4品・ピザ4品。
@@ -43,7 +44,11 @@ const NEW_PIZZAS: [string, PizzaTop][] = [
   ['cornPizza', 'corn'],
 ];
 const C3_IDS = [...NEW_DORIAS, ...NEW_PIZZAS.map(([id]) => id)];
-const ALL_COOK = ['milanoDoria', 'buffaloPizza', ...C3_IDS];
+// C6（ステップH）で前菜4品・フォッカチオ5品が末尾に登録されたため、クックの品は17品
+const C6_IDS = ['popcornShrimp', 'potatoGrill', 'chorizo', 'spicyChicken', 'focaccia', 'cinnamonFocaccia', 'garlicFocaccia', 'tarakoFocaccia', 'cheeseFocaccia'];
+// C7（ステップJ）で鉄板焼き6品がさらに末尾に登録されたため、クックの品は23品（C7 の6品登録による。2026-11-15 承認）
+const C7_IDS = ['hamburg', 'italianHamburg', 'diavolaHamburg', 'mixedGrill', 'chickenDiavola', 'chickenCheese'];
+const ALL_COOK = ['milanoDoria', 'buffaloPizza', ...C3_IDS, ...C6_IDS, ...C7_IDS];
 
 // --- 設備 ---
 const pass: Target = { kind: 'servePass' };
@@ -108,9 +113,14 @@ function makePizza(g: Game, fourth: PizzaTop | 'mozzarella'): void {
 // ===================== 6品の表の行とメニュー（登録済み）=====================
 
 describe('C3 の6品の用意（表の行とメニュー）', () => {
-  it('表の行とメニューが1対1（どちらも末尾の6行）。ドリア = 30点、ピザ = 50点。どれもクックの焼き物', () => {
-    expect(BAKE_TABLE.slice(-C3_IDS.length).map((d) => d.id)).toEqual(C3_IDS);
-    expect(MENU.slice(-C3_IDS.length).map((m) => m.id)).toEqual(C3_IDS);
+  it('表の行とメニューが1対1（どちらも既存の2品のすぐ後の6行）。ドリア = 30点、ピザ = 50点。どれもクックの焼き物', () => {
+    // C6（ステップH）で9品が末尾に足されたため、「末尾の6行」ではなく C3 の6品の位置で比べる
+    // （表の3〜8番目。メニューはバッファローピザのすぐ後の6行 = クックの品の3〜8番目）
+    expect(BAKE_TABLE.slice(2, 2 + C3_IDS.length).map((d) => d.id)).toEqual(C3_IDS);
+    const after = MENU.findIndex((m) => m.id === 'buffaloPizza') + 1;
+    expect(after).toBeGreaterThan(0);
+    expect(MENU.slice(after, after + C3_IDS.length).map((m) => m.id)).toEqual(C3_IDS);
+    expect(menusFor('cook').slice(2, 2 + C3_IDS.length).map((m) => m.id)).toEqual(C3_IDS);
     for (const id of C3_IDS) {
       const m = getMenu(id);
       expect(m).toMatchObject({ station: 'cook', form: 'bake', ingredients: [], enabled: true });
@@ -492,7 +502,8 @@ const SCRIPTS: Record<string, Act[]> = {
 describe('チュートリアル：C3 の6品', () => {
 
   it('提供できる品すべてに工程がある', () => {
-    for (const m of MENU.filter((x) => x.enabled)) {
+    // C7 の6品（鉄板焼き）は、C10 の自動生成が入るまで対象外（TUTORIAL_PENDING_C10。2026-11-15 承認）。それ以外の品は今までどおり全件
+    for (const m of MENU.filter((x) => x.enabled && !TUTORIAL_PENDING_C10.includes(x.id))) {
       expect(hasTutorial(m.id), m.id).toBe(true);
       expect(tutorialSteps(m.id, cfg)!.length).toBeGreaterThan(0);
     }

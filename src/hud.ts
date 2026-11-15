@@ -1,7 +1,7 @@
 import type { GameConfig } from './config';
 import { DEFAULT_DIFFICULTY, DIFFICULTIES, getDifficulty, isDifficulty, type Difficulty } from './difficulty';
 import { DevBoardView, devBoardHtml } from './devboardView';
-import { describeItem } from './game';
+import { describeItem, describeTool } from './game';
 import { INGREDIENTS } from './ingredients';
 import { showMission } from './mission';
 import { DEFAULT_POSITION, POSITIONS, STATION_NAME, getPosition, isPosition, menusFor, rankingBoard } from './position';
@@ -18,7 +18,8 @@ const CONTROLS_HTML = `
     <tr><th>WASD</th><td>歩く（壁・設備には入れない）</td></tr>
     <tr><th>左クリック</th><td>取る・置く・投入する・ボタンを押す</td></tr>
     <tr><th>ダブルクリック</th><td>のびかけの茹で麺器をショート茹で（3秒）</td></tr>
-    <tr><th>右クリック</th><td>冷蔵庫：扉の開閉（開けているときは、中の物を持ち上げて置き直す）　ボトル（ドレッシング・パプリカ・パセリ）を持っているとき：皿にかける・振る　iPadを持っているとき：画面を開く　それ以外：手に持っている物を捨てる</td></tr>
+    <tr><th>右クリック</th><td>冷蔵庫：扉の開閉（開けているときは、中の物を持ち上げて置き直す）　ボトル（ドレッシング・パプリカ・パセリ）を持っているとき：皿にかける・振る　iPadを持っているとき：画面を開く　フォッカチオを持って作業枠のパッドに：逆さまに入れる　手が空でピザチーズの容器に：1/2杯取る　それ以外：手に持っている物を捨てる</td></tr>
+    <tr><th>F</th><td>道具の手（やっとこ・ヘラ）：1台目の具材台の縁のフックで、取る・戻す・持ち替える。やっとこ：出口の器・作業枠の熱い器をつかむ／作業枠・入口のベルト・器の山・ストック容器に置く（左手に下駄・板・お皿・小皿を持っていれば、その場で乗る）。ヘラ：作業枠の鉄板をはがす・目玉焼きをすくってのせる。熱い器（オーブンを通った器）は素手では取れない（トライアルクルーは素手で取れる）。右クリックで捨てるのは左手の物が先、左手が空ならやっとこの器</td></tr>
     <tr><th>E（押している間）</th><td>伝票を拡大表示</td></tr>
     <tr><th>鍋を持って右クリック</th><td>鍋を持ったまま、右クリックすると投げられるよ！悪質なクレーマーや、ネズミ撃退に使えるかも...?(実装予定)</td></tr>
   </table>
@@ -244,6 +245,7 @@ export class Hud {
   private score = el('div', 'score');
   private rail = el('div', 'rail');
   private hand = el('div', 'hand');
+  private toolHand = el('div', 'hand tool'); // 道具の手（右下。クック編 C4）
   private toast = el('div', 'toast');
   private hint = el('div', 'hint');
   private guide = el('div', 'guide hidden');
@@ -297,7 +299,7 @@ export class Hud {
     this.tutorialCounts = tutorialCounts(cfg);
     this.ipad.innerHTML = ipadHtml(cfg, settings);
     this.devBoardView = new DevBoardView(this.ipad.querySelector<HTMLElement>('[data-page="devboard"]')!);
-    root.append(top, this.mission, this.note, this.tutorial, this.rail, this.crosshair, this.hint, this.guide, this.hand, this.toast, this.startPopup, this.ipad, this.overlay);
+    root.append(top, this.mission, this.note, this.tutorial, this.rail, this.crosshair, this.hint, this.guide, this.hand, this.toolHand, this.toast, this.startPopup, this.ipad, this.overlay);
     // 結果画面の名前入力は、押しても練習キッチンへ進まない
     this.overlay.addEventListener('click', (e) => {
       if ((e.target as HTMLElement).closest('.rank-form')) return;
@@ -517,8 +519,11 @@ export class Hud {
     this.crosshair.style.display = state.ipadOpen ? 'none' : '';
     this.score.innerHTML = `<b>${state.score}</b> 点${state.combo >= 2 ? ` <span class="combo">${state.combo} COMBO</span>` : ''}`;
 
+    // 道具を持っているときは、手持ちの表示を2つに分ける（左下 = 左手、右下 = 道具）。持っていなければ今までどおり「手：」
     const handText = describeItem(state.hand);
-    this.hand.textContent = handText ? `手：${handText}` : '';
+    const toolText = describeTool(state.tool);
+    this.hand.textContent = handText ? `${toolText ? '左手' : '手'}：${handText}` : '';
+    this.toolHand.textContent = toolText ? `道具：${toolText}` : '';
 
     const toastVisible = state.toast && state.time < state.toast.expiresAt;
     this.toast.textContent = toastVisible ? state.toast!.text : '';

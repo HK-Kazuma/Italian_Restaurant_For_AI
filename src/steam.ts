@@ -100,3 +100,56 @@ export class Steam {
     });
   }
 }
+
+// 油のはねる粒（クック編 C7。焼けた鉄板を出口から取ってから、しばらくの間）。小さな明るい粒が、器の上で跳ねて落ちるのを繰り返す。
+// 湯気と同じく見た目だけで、ゲームの状態は持たない。intensity（0〜1）で、同時に跳ねる粒の数が変わる
+type Spark = { sprite: THREE.Sprite; age: number; life: number; x: number; z: number; vx: number; vy: number; vz: number };
+
+export class Sizzle {
+  readonly group = new THREE.Group();
+  private sparks: Spark[] = [];
+
+  constructor(
+    private spread = 0.16, // 粒が出る範囲（器の大きさの目安。m）
+    count = 18,
+  ) {
+    for (let i = 0; i < count; i++) {
+      const material = new THREE.SpriteMaterial({ map: getPuffTexture(), color: i % 3 === 0 ? 0xfff2c4 : 0xffd27a, transparent: true, depthWrite: false, opacity: 0 });
+      const sprite = new THREE.Sprite(material);
+      sprite.visible = false;
+      sprite.scale.set(0.014, 0.014, 1);
+      this.group.add(sprite);
+      this.sparks.push({ sprite, age: 0, life: 0, x: 0, z: 0, vx: 0, vy: 0, vz: 0 });
+    }
+  }
+
+  private respawn(p: Spark, stagger: boolean): void {
+    p.life = 0.25 + Math.random() * 0.3;
+    p.age = stagger ? Math.random() * p.life : 0;
+    p.x = (Math.random() * 2 - 1) * this.spread * 0.5;
+    p.z = (Math.random() * 2 - 1) * this.spread * 0.35;
+    p.vx = (Math.random() * 2 - 1) * 0.25;
+    p.vz = (Math.random() * 2 - 1) * 0.25;
+    p.vy = 0.6 + Math.random() * 0.6;
+  }
+
+  // dt=0 のときは止まる（一時停止中）。intensity: 0 = 出ない、1 = いちばん多い
+  update(dt: number, intensity: number): void {
+    const active = Math.round(Math.min(1, Math.max(0, intensity)) * this.sparks.length);
+    this.group.visible = active > 0 || this.sparks.some((p) => p.sprite.visible);
+    this.sparks.forEach((p, i) => {
+      p.age += dt;
+      if (p.age >= p.life) {
+        if (i >= active) {
+          p.sprite.visible = false;
+          return;
+        }
+        this.respawn(p, p.life === 0);
+      }
+      const t = p.age;
+      p.sprite.visible = true;
+      p.sprite.position.set(p.x + p.vx * t, Math.max(0, p.vy * t - 4.9 * t * t), p.z + p.vz * t); // 跳ねて、落ちる
+      (p.sprite.material as THREE.SpriteMaterial).opacity = 0.9 * (1 - t / p.life);
+    });
+  }
+}

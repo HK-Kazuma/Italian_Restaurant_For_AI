@@ -28,7 +28,7 @@ function findTargetRoot(obj: THREE.Object3D): THREE.Object3D | null {
   return null;
 }
 
-// 画面中央（クロスヘア）の先にある設備を調べ、今の手持ちで操作できるなら光らせる（スナップ方式）
+// 画面中央（クロスヘア）の先にある設備を調べ、今の手持ち（左手・道具の手）で操作できるなら光らせる（スナップ方式）
 export class Interactor {
   private raycaster = new THREE.Raycaster();
   private center = new THREE.Vector2(0, 0);
@@ -64,7 +64,8 @@ export class Interactor {
     // 冷蔵庫・サラダ台の天板・オーブンの入口のベルトは大きいので光らせない（冷蔵庫のヒントは HUD、ボトルを置く場所は置く前の見せ方で示す）
     if (root && this.current) {
       const big = this.current.kind === 'fridgeDoor' || this.current.kind === 'fridgeShelf' || this.current.kind === 'tableTop' || this.current.kind === 'ovenInlet';
-      const glow = !big && game.planInteract(this.current);
+      // 左クリックか F（道具の手）のどちらかでできることがあれば光らせる（クック編 C4）
+      const glow = !big && (game.planInteract(this.current) !== null || game.planTool(this.current) !== null);
       setEmissive(root, glow ? HIGHLIGHT : 0x000000);
     }
   }

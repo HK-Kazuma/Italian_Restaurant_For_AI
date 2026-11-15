@@ -25,6 +25,14 @@ function seeded(seed = 12345): () => number {
   };
 }
 
+// クックの品の一覧（並びは表・メニューの順）。C3 の6品（2026-11-14）と、C6 の前菜4品・フォッカチオ5品（ステップH）、
+// C7 の鉄板焼き6品（ステップJ）を含む23品（C7 の6品登録による。2026-11-15 承認。17 → 23）
+const COOK_IDS = [
+  'milanoDoria', 'buffaloPizza', 'cheeseMilanoDoria', 'tarakoDoria', 'tarakoGratin', 'vegMushroomPizza', 'sausagePizza', 'cornPizza',
+  'popcornShrimp', 'potatoGrill', 'chorizo', 'spicyChicken', 'focaccia', 'cinnamonFocaccia', 'garlicFocaccia', 'tarakoFocaccia', 'cheeseFocaccia',
+  // --- C7（ステップJ）：C7 の6品登録による（2026-11-15 承認）---
+  'hamburg', 'italianHamburg', 'diavolaHamburg', 'mixedGrill', 'chickenDiavola', 'chickenCheese',
+];
 const ticket = (id: number, menuId: string, arrivedAt = 0): Ticket => createTicket(id, getMenu(menuId), arrivedAt);
 const buffalo: PizzaBuild = { dough: true, sauce: true, cheese: true, mozz: MOZZ_TOTAL };
 const doriaItem = (state: 'raw' | 'half' | 'baked' | 'burnt', geta: boolean): Item => ({ kind: 'bakeDish', style: 'doria', cooked: 0, state, ...(geta ? { geta } : {}) });
@@ -112,9 +120,9 @@ describe('メニュー：クックの2品', () => {
 
   it('焼き物の品ごとに、提供の決まりが表（bake.ts）にある', () => {
     for (const m of bakedMenus()) expect(getBakeDish(m.id)).not.toBeNull();
-    // C3 の6品を有効化（2026-11-14）したため、既存の2品の後ろに6品が並ぶ
-    expect(BAKE_TABLE.map((d) => d.id)).toEqual(['milanoDoria', 'buffaloPizza', 'cheeseMilanoDoria', 'tarakoDoria', 'tarakoGratin', 'vegMushroomPizza', 'sausagePizza', 'cornPizza']);
-    expect(bakedMenus().map((m) => m.id)).toEqual(['milanoDoria', 'buffaloPizza', 'cheeseMilanoDoria', 'tarakoDoria', 'tarakoGratin', 'vegMushroomPizza', 'sausagePizza', 'cornPizza']);
+    // C3 の6品を有効化（2026-11-14）したため、既存の2品の後ろに6品が並ぶ。C6 の9品（ステップH）はさらに後ろ
+    expect(BAKE_TABLE.map((d) => d.id)).toEqual(COOK_IDS);
+    expect(bakedMenus().map((m) => m.id)).toEqual(COOK_IDS);
   });
 });
 
@@ -267,8 +275,8 @@ describe('ポジション：届く伝票の絞り込み', () => {
     expect(POSITIONS.map((p) => p.id)).toEqual(['heat', 'cook', 'all']);
     expect(menusFor('heat').every((m) => m.station !== 'cook')).toBe(true);
     expect(menusFor('heat')).toHaveLength(15);
-    // C3 の6品を有効化（2026-11-14）したため、既存の2品の後ろに6品が並ぶ
-    expect(menusFor('cook').map((m) => m.id)).toEqual(['milanoDoria', 'buffaloPizza', 'cheeseMilanoDoria', 'tarakoDoria', 'tarakoGratin', 'vegMushroomPizza', 'sausagePizza', 'cornPizza']);
+    // C3 の6品を有効化（2026-11-14）したため、既存の2品の後ろに6品が並ぶ。C6 の9品（ステップH）はさらに後ろ
+    expect(menusFor('cook').map((m) => m.id)).toEqual(COOK_IDS);
     expect(menusFor('all')).toEqual(MENU);
     expect(getPosition('heat').beta).toBe(false);
     expect(getPosition('cook').beta).toBe(true);
@@ -311,8 +319,8 @@ describe('ポジション：届く伝票の絞り込み', () => {
   for (const d of DIFFICULTIES) {
     it(`${d.name}：クックではパスタ・サラダの伝票が1枚も出ず、ヒートでは焼き物の伝票が出ない`, () => {
       const cook = collect(d.id, 'cook');
-      // C3 の6品を有効化（2026-11-14）したため、クックの伝票は8品
-      expect([...cook.keys()].sort()).toEqual(['buffaloPizza', 'cheeseMilanoDoria', 'cornPizza', 'milanoDoria', 'sausagePizza', 'tarakoDoria', 'tarakoGratin', 'vegMushroomPizza']);
+      // C3 の6品を有効化（2026-11-14）したため、クックの伝票は8品。C6 の9品を登録（ステップH）したため17品
+      expect([...cook.keys()].sort()).toEqual([...COOK_IDS].sort());
       const heat = collect(d.id, 'heat');
       for (const id of heat.keys()) expect(getMenu(id).station).not.toBe('cook');
       expect(heat.size).toBeGreaterThan(0);

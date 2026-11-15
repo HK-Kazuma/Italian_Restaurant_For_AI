@@ -1,4 +1,4 @@
-import type { BakeSeries, BakeStyle, BottleId, CookBinId, FreeTrayId, PizzaTop, PlateStyle, SurfaceId, TableSpot } from './types';
+import type { BakeSeries, BakeStyle, BottleId, CookBinId, FreeTrayId, PizzaTop, PlateStyle, SurfaceId, TableSpot, ToolId } from './types';
 
 // 設備の置き場所。ここの数値を直すと、その設備が動く（保存すると開発サーバーが自動で読み込み直す）。
 //
@@ -112,6 +112,10 @@ export const BOTTLE_HOME: Record<BottleId, { surface: SurfaceId; x: number; z: n
   // 台の中心が手前へずれたぶん、相対位置を引いて、台の上の見た目の位置は変えない
   parsley: { surface: 'left', x: -0.4, z: 0.95 - LEFT_COUNTER_EXTEND / 2 },
   blackPepper: { surface: 'left', x: -0.4, z: 1.45 - LEFT_COUNTER_EXTEND / 2 }, // もとのトッピングの位置
+  // クック用のボトル（クック編 C6）：作業台（prep）の、1台目の具材台の壁側の縁に並べる（作業枠・ストック容器より壁側。値は下の COOK_BOTTLE_ROW）
+  granMoravia: { surface: 'prep', x: -0.66, z: 0 },
+  cinnamon: { surface: 'prep', x: -0.48, z: 0 },
+  garlicSauce: { surface: 'prep', x: -0.3, z: 0 },
 };
 
 // ガーリック・唐辛子の容器の、台の上の標準の置き場所（チュートリアルの矢印が指す。台の中心からの相対位置）。
@@ -309,6 +313,15 @@ export const WORK_FRAMES = {
   slots: [-1, 0, 1].map((k) => ({ xr: OVEN_COUNTER.width / 2 - WORK_FRAME_EDGE - WORK_FRAME_W / 2, zr: k * (WORK_FRAME_D + WORK_FRAME_GAP) })),
 };
 
+// 道具のフック（クック編 C4。仮）：1台目の具材台の、部屋の中央側の縁（天板のすぐ下）に、やっとこ・ヘラを掛ける。
+// x = フックの位置（天板の縁の少し外）、y = フックの高さ、zr = 具材台の中心からの相対位置（オーブン側の端。作業枠のいちばんオーブン側の枠の前）
+export const TOOL_HOOKS = {
+  counter: 0,
+  x: OVEN_COUNTER.x + OVEN_COUNTER.width / 2 + 0.03,
+  y: 0.86,
+  zr: { tongs: -0.5, spatula: -0.38 } as Record<ToolId, number>,
+};
+
 // 木の板（鉄板・スープ皿の受け台）。w = 長い辺、d = 短い辺、h = 厚み。3列系の器より、ひと回り大きい（作業枠に収まる）
 export const BOARD = { w: 0.5, d: 0.34, h: 0.025, stackHeight: 6 };
 
@@ -397,7 +410,26 @@ export const COOK_BIN_SPOTS: Record<CookBinId, { counter: number; xr: number; zr
   cheeseSauceCup: { counter: 2, xr: -0.39, zr: 0.45 },
   demiglace: { counter: 2, xr: -0.12, zr: 0.45 },
   vegPaste: { counter: 2, xr: 0.15, zr: 0.45 },
+  // クック用のたらこソース（クック編 C6。ヒートの取り出し元とは別。1台目の、ポテト・チキンの容器の列の壁側）
+  tarakoSauce: { counter: 0, xr: -0.02, zr: 0.34 },
 };
+
+// 3台目の具材台の、焼けた器の置き場（クック編 C7。仮：1か所）。目玉焼き鉄板など、ヘラですくう物が残った器を置いておく（作業枠を空けるため）。
+// 部屋の中央側の縁（作業枠と同じ向き）の、まん中の列に置く。天板のまん中と、部屋の中央側の壁寄りの角は、お皿・鉄板の山を置けるように空けておく。
+// 置けるのは3列系の器（受け台には乗せていない物）。w・d は置き場の印の大きさ（3列系の器より、ひと回り大きい）
+const PAN_REST_W = BAKE_SERIES.three.w + 0.06;
+export const PAN_RESTS = {
+  counter: 2,
+  w: PAN_REST_W,
+  d: BAKE_SERIES.three.d + 0.06,
+  slots: [{ xr: OVEN_COUNTER.width / 2 - 0.03 - PAN_REST_W / 2, zr: -0.12 }], // ピザの具の容器の列（オーブン側の縁）と、壁寄りの角（お皿・鉄板の山の置き場）のあいだ
+};
+
+// クック用のボトルの最初の置き場所（1台目の具材台の、壁側の縁。具材台の中心からの相対 zr）。BOTTLE_HOME の z は、作業台の中心からの相対に直して入れる
+const COOK_BOTTLE_ROW = { counter: 0, zr: 0.44 };
+for (const id of ['granMoravia', 'cinnamon', 'garlicSauce'] as const) {
+  BOTTLE_HOME[id].z = OVEN_COUNTER_ZS[COOK_BOTTLE_ROW.counter] - OVEN_COUNTER_ROW.z + COOK_BOTTLE_ROW.zr;
+}
 
 // 作業台（prep）の天板に、もとから置いてある物（中心の相対位置と、半分の大きさ）。2台目の具材台のピザの置き場と、1台目の作業枠、ストック容器
 const counterZ = (i: number) => OVEN_COUNTER_ZS[i] - OVEN_COUNTER_ROW.z; // 何台目の具材台の中心か（作業台の中心からの相対）
@@ -414,6 +446,8 @@ export const PREP_FIXTURES: readonly { x: number; z: number; hx: number; hz: num
   ...WORK_FRAMES.slots.map((f) => ({ x: f.xr, z: counterZ(WORK_FRAMES.counter) + f.zr, hx: WORK_FRAMES.w / 2, hz: WORK_FRAMES.d / 2 })),
   // ストック容器（クック編 C5）
   ...Object.values(COOK_BIN_SPOTS).map((b) => ({ x: b.xr, z: counterZ(b.counter) + b.zr, hx: COOK_BIN.w / 2, hz: COOK_BIN.d / 2 })),
+  // 焼けた器の置き場（クック編 C7）
+  ...PAN_RESTS.slots.map((r) => ({ x: r.xr, z: counterZ(PAN_RESTS.counter) + r.zr, hx: PAN_RESTS.w / 2, hz: PAN_RESTS.d / 2 })),
 ];
 
 // ピザのお皿・鉄板（の山）を置ける台と、その範囲。置けない台（サラダ台・湯煎器の台）は null

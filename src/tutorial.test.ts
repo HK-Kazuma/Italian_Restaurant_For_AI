@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CONFIG as cfg } from './config';
 import { Game } from './game';
-import { PIZZA_PLATE_GUIDE } from './layout';
+import { BOTTLE_HOME, PIZZA_PLATE_GUIDE } from './layout';
 import { frontS } from './oven';
 import { MENU } from './recipe';
 import { hasTutorial, matchesTarget, tutorialSteps, type GuideAt } from './tutorial';
-import type { PizzaTop, Target, TrayId } from './types';
+import { TUTORIAL_PENDING_C10 } from './testShared';
+import type { BakeStyle, BottleId, CookBinId, FrozenBagId, PizzaTop, Target, TrayId } from './types';
 
 // --- 設備の指定（game.test.ts と同じ書き方）---
 const rack: Target = { kind: 'noodleRack' };
@@ -78,6 +79,30 @@ const c3Pizza = (top: PizzaTop): Act[] => [
 const returnPot = (): Act[] => [wait(cfg.potWashTime + 1), washer, potSlot(0)];
 
 // 上手な人の手順。矢印はその手順どおりの場所を指し、最後に提供できて、チュートリアルが完了するはず。
+// --- C6（ステップH）：前菜4品・フォッカチオ5品の台本の部品（c6menu.test.ts の SCRIPTS と同じ手順）---
+const c6Vessel = (style: BakeStyle): Target => ({ kind: 'vesselStack', style });
+const c6Bag = (id: FrozenBagId): Target => ({ kind: 'frozenBag', id });
+const c6Bin = (id: CookBinId): Target => ({ kind: 'cookBin', id });
+const c6Bottle = (id: BottleId): Target => ({ kind: 'bottle', id });
+const c6BottleBack = (id: BottleId): Target => ({ kind: 'tableTop', surface: BOTTLE_HOME[id].surface, x: BOTTLE_HOME[id].x, z: BOTTLE_HOME[id].z });
+const c6Inlet = (deck: 'upper' | 'lower', style: BakeStyle): Target => ({ kind: 'ovenInlet', deck, x: 0, s: frontS(style) });
+const c6Outlet = (deck: 'upper' | 'lower'): Target => ({ kind: 'ovenOutlet', deck, lane: 1 }); // 3列系の器を x = 0 に流すと、まん中のレーン
+const c6Times = (t: Target, n: number): Act[] => Array.from({ length: n }, () => t);
+// 焼成パッドの品：パッドを作業枠に置く → 具 → 上段 → 焼いている間に小皿を作業枠へ → 出口から取って小皿に移す → パッドを棚へ →（仕上げ）→ 提供
+const c6PadDish = (loads: Act[], finish: Act[] = []): Act[] => [
+  c6Vessel('bakingPad'), workFrame(0), ...loads, workFrame(0), c6Inlet('upper', 'bakingPad'),
+  smallStack, workFrame(0), wait(cfg.ovenUpperTime + 1),
+  c6Outlet('upper'), workFrame(0), c6Vessel('bakingPad'),
+  ...finish, workFrame(0), pass,
+];
+// ドリア皿の品：空のドリア皿を作業枠に置く → 具 → 流す → 下駄を取って出口の皿に乗せる → 提供
+const c6DoriaDish = (loads: Act[], deck: 'upper' | 'lower'): Act[] => [
+  c6Vessel('doria'), workFrame(0), ...loads, workFrame(0), c6Inlet(deck, 'doria'),
+  wait((deck === 'upper' ? cfg.ovenUpperTime : cfg.ovenLowerTime) + 1),
+  getaStack, c6Outlet(deck), pass,
+];
+const c6Shake = (id: BottleId): Act[] => [c6Bottle(id), { right: workFrame(0) }, { free: c6BottleBack(id) }];
+
 const SCRIPTS: Record<string, Act[]> = {
   tarako: [
     rack, basket(0), button(0), plateStack, slot(0), wait(cfg.boilTime + 1),
@@ -214,6 +239,16 @@ const SCRIPTS: Record<string, Act[]> = {
   vegMushroomPizza: c3Pizza('vegMushroom'),
   sausagePizza: c3Pizza('sausage'),
   cornPizza: c3Pizza('corn'),
+  // C6 の9品を登録（ステップH）したため、提供できる品に台本を足す（c6menu.test.ts の台本と同じ手順）
+  popcornShrimp: c6PadDish([...c6Times(c6Bag('popcornShrimp'), 9), workFrame(0)]),
+  potatoGrill: c6DoriaDish([...c6Times(c6Bin('potato'), 8), workFrame(0)], 'upper'),
+  chorizo: c6DoriaDish([...c6Times(c6Bag('chorizo'), 5), workFrame(0), ...c6Times(c6Bin('potato'), 2), workFrame(0)], 'upper'),
+  spicyChicken: c6DoriaDish([c6Bin('oilSheet'), workFrame(0), ...c6Times(c6Bag('spicyChicken'), 4), workFrame(0)], 'lower'),
+  focaccia: c6PadDish([c6Bin('focaccia'), workFrame(0)]),
+  cinnamonFocaccia: c6PadDish([c6Bin('focaccia'), workFrame(0)], c6Shake('cinnamon')),
+  garlicFocaccia: c6PadDish([c6Bin('focaccia'), workFrame(0)], c6Shake('garlicSauce')),
+  tarakoFocaccia: c6PadDish([c6Bin('focaccia'), { right: workFrame(0) }, c6Bin('tarakoSauce'), workFrame(0), ...c6Shake('granMoravia')]),
+  cheeseFocaccia: c6PadDish([c6Bin('focaccia'), { right: workFrame(0) }, { right: { kind: 'pizzaSource', id: 'cheese' } }, workFrame(0), ...c6Shake('granMoravia')]),
 };
 
 function newTutorial(menuId: string) {
@@ -254,7 +289,10 @@ function play(menuId: string, acts: Act[], onComplete: ((id: string) => void) | 
 
 describe('チュートリアル：メニューの一覧', () => {
   it('提供できるメニューすべてに、工程が用意されている（メニューを足したら、工程も足す）', () => {
-    for (const m of MENU.filter((x) => x.enabled)) {
+    // C7 の6品（鉄板焼き）は、C10 の自動生成が入るまで対象外（TUTORIAL_PENDING_C10。2026-11-15 承認）。それ以外の品は今までどおり全件。
+    // 除外は、提供できる品の id だけに効く（一覧の打ち間違いで、別の品が黙って外れないように確かめる）
+    for (const id of TUTORIAL_PENDING_C10) expect(MENU.some((x) => x.id === id && x.enabled), id).toBe(true);
+    for (const m of MENU.filter((x) => x.enabled && !TUTORIAL_PENDING_C10.includes(x.id))) {
       expect(hasTutorial(m.id), `${m.name}（${m.id}）の工程がない`).toBe(true);
       expect(tutorialSteps(m.id, cfg)!.length).toBeGreaterThan(0);
     }
@@ -458,7 +496,9 @@ describe('チュートリアル：矢印と工程の進み方', () => {
 });
 
 describe('チュートリアル：メニューを最後まで作る（矢印は上手な人の手順を指す）', () => {
-  for (const m of MENU.filter((x) => x.enabled)) {
+  // C7 の6品（鉄板焼き）は、C10 の自動生成が入るまで対象外（TUTORIAL_PENDING_C10。2026-11-15 承認）。
+  // ケースは消さず、除外リストで外すだけ（C10 で除外を外せば、6品のケースが自動で戻る）
+  for (const m of MENU.filter((x) => x.enabled && !TUTORIAL_PENDING_C10.includes(x.id))) {
     it(`${m.name}：矢印のとおりに作ると、提供できて、チュートリアルが完了する`, () => {
       const script = SCRIPTS[m.id];
       expect(script, `${m.name} の台本がない`).toBeDefined();

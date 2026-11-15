@@ -147,7 +147,8 @@ body {
   left: 50%;
   transform: translateX(-50%);
   font-size: 16px;
-  white-space: nowrap;
+  white-space: pre; /* 左クリックの案内と、F（道具の手）の案内を2行で出す */
+  text-align: center;
   text-shadow: 0 1px 4px #000;
   color: #ffe08a;
 }
@@ -179,6 +180,12 @@ body {
   left: 18px;
   font-size: 18px;
   text-shadow: 0 1px 4px #000;
+}
+
+/* 道具の手（やっとこ・ヘラ）は右下 */
+.hand.tool {
+  left: auto;
+  right: 18px;
 }
 
 .toast {

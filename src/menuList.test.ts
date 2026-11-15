@@ -20,8 +20,10 @@ describe('分類の表', () => {
     expect(new Set(MENU_CATEGORIES.map((c) => c.id)).size).toBe(MENU_CATEGORIES.length);
   });
 
-  it('全品（ヒート15品・クック8品）が、表にある分類のどれか1つに入る', () => {
-    expect(ALL_MENU).toHaveLength(23);
+  it('全品（ヒート15品・クック23品）が、表にある分類のどれか1つに入る', () => {
+    // C6（ステップH）で前菜4品・フォッカチオ5品を登録したため、クックは8品 → 17品（全品 23 → 32）
+    // C7 の6品登録による（2026-11-15 承認）：鉄板焼き6品が入り、クックは17品 → 23品（全品 32 → 38）
+    expect(ALL_MENU).toHaveLength(38);
     const ids = new Set(MENU_CATEGORIES.map((c) => c.id));
     for (const m of ALL_MENU) expect(ids.has(m.category), m.id).toBe(true);
   });
@@ -59,17 +61,24 @@ describe('一覧の分類分け（menuSections）', () => {
 
   it('分類は表の順、分類の中はメニュー表の順。品のない分類はタブを出さない', () => {
     expect(menuSections('heat').map((s) => s.category.id)).toEqual(HEAT_CATEGORIES);
-    expect(menuSections('cook').map((s) => s.category.id)).toEqual(['pizza', 'doriaGratin']);
-    expect(menuSections('all').map((s) => s.category.id)).toEqual([...HEAT_CATEGORIES, 'pizza', 'doriaGratin']);
+    // C6（ステップH）で前菜・焼きたてパンの品が入ったため、クックの分類は4つ（表の順：前菜・ピザ・ドリア＆グラタン・焼きたてパン）
+    // C7 の6品登録による（2026-11-15 承認）：肉料理（meat）の品が入ったため、クックの分類は5つ（表の順：前菜・肉料理・ピザ・ドリア＆グラタン・焼きたてパン）
+    expect(menuSections('cook').map((s) => s.category.id)).toEqual(['cookStarter', 'meat', 'pizza', 'doriaGratin', 'bread']);
+    expect(menuSections('all').map((s) => s.category.id)).toEqual([...HEAT_CATEGORIES, 'cookStarter', 'meat', 'pizza', 'doriaGratin', 'bread']);
     const pasta = menuSections('heat')[0];
     expect(pasta.cards.map((c) => c.id)).toEqual(MENU.filter((m) => m.category === 'pasta').map((m) => m.id));
   });
 
   it('C3 の6品（登録済み）は、ピザ・ドリアの分類にメニュー表の順で入る', () => {
     const cook = menuSections('cook');
+    // C6（ステップH）の9品は、前菜・焼きたてパンの分類に入る（ピザ・ドリアの中身は C3 のまま）
     expect(cook.map((s) => [s.category.id, s.cards.map((c) => c.id)])).toEqual([
+      ['cookStarter', ['popcornShrimp', 'potatoGrill', 'chorizo', 'spicyChicken']],
+      // C7 の6品登録による（2026-11-15 承認）：鉄板焼き6品は、前菜の次の肉料理の分類に入る
+      ['meat', ['hamburg', 'italianHamburg', 'diavolaHamburg', 'mixedGrill', 'chickenDiavola', 'chickenCheese']],
       ['pizza', ['buffaloPizza', 'vegMushroomPizza', 'sausagePizza', 'cornPizza']],
       ['doriaGratin', ['milanoDoria', 'cheeseMilanoDoria', 'tarakoDoria', 'tarakoGratin']],
+      ['bread', ['focaccia', 'cinnamonFocaccia', 'garlicFocaccia', 'tarakoFocaccia', 'cheeseFocaccia']],
     ]);
   });
 
@@ -82,10 +91,15 @@ describe('一覧の分類分け（menuSections）', () => {
   });
 
   it('カードには品名・点数・分類の色（サムネの色の四角）が入る', () => {
+    // C6（ステップH）で、クックの先頭の分類は前菜、先頭の品はポップコーンシュリンプになった（点数は C10 の仮の値 30）
     const card = menuSections('cook')[0].cards[0];
-    expect(card).toMatchObject({ id: 'buffaloPizza', name: 'バッファローピザ', station: 'cook', points: 50, big: true });
-    expect(card.color).toBe(MENU_CATEGORIES.find((c) => c.id === 'pizza')!.color);
+    expect(card).toMatchObject({ id: 'popcornShrimp', name: 'ポップコーンシュリンプ', station: 'cook', points: 30, big: true });
+    expect(card.color).toBe(MENU_CATEGORIES.find((c) => c.id === 'cookStarter')!.color);
     expect(card.no).toBeUndefined();
+    // ピザの分類の先頭のカードは、いままでどおりバッファローピザ
+    const pizza = menuSections('cook').find((x) => x.category.id === 'pizza')!.cards[0];
+    expect(pizza).toMatchObject({ id: 'buffaloPizza', name: 'バッファローピザ', station: 'cook', points: 50, big: true });
+    expect(pizza.color).toBe(MENU_CATEGORIES.find((c) => c.id === 'pizza')!.color);
   });
 
   it('伝票に出ない品（enabled: false）は一覧に出ない', () => {
@@ -122,7 +136,7 @@ describe('選んでおく分類（pickCategory）', () => {
   it('前の分類がそのポジションにもあれば残し、なければ先頭', () => {
     expect(pickCategory(menuSections('all'), 'pizza')).toBe('pizza');
     expect(pickCategory(menuSections('heat'), 'pizza')).toBe('pasta');
-    expect(pickCategory(menuSections('cook'), null)).toBe('pizza');
+    expect(pickCategory(menuSections('cook'), null)).toBe('cookStarter'); // C6（ステップH）でクックの先頭の分類は前菜
     expect(pickCategory([], 'pizza')).toBeNull();
   });
 });

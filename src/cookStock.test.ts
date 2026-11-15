@@ -116,17 +116,32 @@ describe('冷凍の袋（吊り棚）', () => {
 });
 
 describe('受け入れ条件：シュリンプ', () => {
-  // シュリンプの品（ポップコーンシュリンプ）は C6 で表に入る。ここでは、このファイルの中だけで、焼成パッドにシュリンプ9つの行を足す（c3menu.test.ts と同じやり方）
+  // シュリンプの品（ポップコーンシュリンプ）は C6 で表に入った。下の「焼成パッドにシュリンプ9つの品があるとき」は、このファイルの中だけで検証用の行を足す（C6 前からのやり方のまま）
   const table = BAKE_TABLE as BakeDish[];
   const row: BakeDish = { id: 'testShrimp', vessel: 'bakingPad', stages: [{ load: [{ id: 'shrimp', count: 9 }], need: 1 }], finish: { base: 'geta' } };
 
   it('表に品がないうちは、焼成パッドにシュリンプは入らない（入らない理由が出る）', () => {
-    const g = cookGame();
-    g.interact(vesselStack('bakingPad'));
-    g.interact(frame(0));
-    g.interact(bag('popcornShrimp'));
-    expect(g.planInteract(frame(0))).toBeNull();
-    expect(g.getaHint(frame(0))).toContain('この器には入れない');
+    // C6（ステップH）でポップコーンシュリンプが表に入ったため、表からシュリンプを使う品を一時的に除いて確かめる
+    // （主張は「表にない中身は器に入らない」のまま。終わったら元の位置に戻す）
+    // C7 の6品登録による（2026-11-15 承認）：ミックスグリル（mixedGrill）もシュリンプを使うため、除く品に足した
+    const removed = table
+      .map((d, i) => [d, i] as const)
+      .filter(([d]) => d.stages.some((st) => st.load.some((l) => l.id === 'shrimp')));
+    expect(removed.map(([d]) => d.id)).toEqual(['popcornShrimp', 'mixedGrill']);
+    for (const [d] of [...removed].reverse()) table.splice(table.indexOf(d), 1);
+    try {
+      const g = cookGame();
+      g.interact(vesselStack('bakingPad'));
+      g.interact(frame(0));
+      g.interact(bag('popcornShrimp'));
+      expect(g.planInteract(frame(0))).toBeNull();
+      expect(g.getaHint(frame(0))).toContain('この器には入れない');
+    } finally {
+      for (const [d, i] of removed) table.splice(i, 0, d);
+    }
+    expect(table.some((d) => d.id === 'popcornShrimp')).toBe(true);
+    expect(table.some((d) => d.id === 'mixedGrill')).toBe(true); // C7 の6品登録による（2026-11-15 承認）
+    for (const [d, i] of removed) expect(table[i]).toBe(d); // 元の位置に戻っている
   });
 
   describe('焼成パッドにシュリンプ9つの品があるとき', () => {
@@ -326,6 +341,11 @@ describe('ポテトのストック容器（1台目の天板）', () => {
 
 describe('そのほかのストック（土台）', () => {
   it('コーン・パティ・チキンは、なくならない容器から1つずつ取れる。使う品がまだない容器は「準備中」で取れない', () => {
+    // C7 の6品登録による（2026-11-15 承認）：卵は1つずつ取る（gives）、デミグラスソース・野菜ペーストはレードルで1杯（sauce）、
+    // チーズソースの容器は空の小さい容器を1つ（cup）取れるようになった（使う品が表に入ったため）
+    expect(COOK_BINS.egg.gives).toBe('egg');
+    expect(COOK_BIN_IDS.filter((id) => COOK_BINS[id].sauce)).toEqual(['demiglace', 'vegPaste']);
+    expect(COOK_BIN_IDS.filter((id) => COOK_BINS[id].cup)).toEqual(['cheeseSauceCup']);
     const g = cookGame();
     for (const id of COOK_BIN_IDS) {
       g.state.hand = null;
@@ -333,6 +353,12 @@ describe('そのほかのストック（土台）', () => {
       if (def.gives) {
         click(g, bin(id), 3);
         expect(g.state.hand).toEqual({ kind: 'loadStack', id: def.gives, count: 3 });
+      } else if (def.sauce) {
+        g.interact(bin(id));
+        expect(g.state.hand, id).toEqual({ kind: 'sauceLadle', id: def.sauce });
+      } else if (def.cup) {
+        g.interact(bin(id));
+        expect(g.state.hand, id).toEqual({ kind: 'sauceCup', fill: 'empty' });
       } else {
         expect(g.planInteract(bin(id))).toBeNull();
         expect(g.stockHint(bin(id))).toContain('準備中');
