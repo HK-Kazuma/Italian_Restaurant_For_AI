@@ -271,8 +271,8 @@ export function shelfStackSpot(style: BakeStyle, slot: number): { xr: number; zr
 //   （ピザ生地・ピザの鉄板のスタックは、壁の吊り棚に置く。もとの場所には冷凍の袋を並べる）
 export const PIZZA_COUNTER = {
   counter: 1, // 何台目の具材台の上か（OVEN_COUNTER_ZS の添字。0 = オーブンに近い1台目）
-  sauce: { xr: 0.0, zr: -0.42, w: 0.3, d: 0.3 }, // 正方形の容器（ピザソース）。w = x 方向、d = z 方向
-  cheese: { xr: 0.0, zr: 0.0, w: 0.24, d: 0.44 }, // 長方形の容器（ピザチーズ）。z 方向に長い
+  sauce: { xr: 0.0, zr: -0.42, w: 0.24, d: 0.24 }, // 正方形の容器（ピザソース。クックの具材のケースと同じ大きさ）。w = x 方向、d = z 方向
+  cheese: { xr: 0.0, zr: 0.0, w: 0.24, d: 0.24 }, // 正方形の容器（ピザチーズ。クックの具材のケースと同じ大きさ）
   mozz: { xr: 0.0, zr: 0.42, w: 0.28, d: 0.28 }, // 上が空いたプラスチックの容器（モッツァレラチーズ）
   slotR: 0.27, // 組み立て台の半径（鉄板 直径 0.5m が収まる）
   slotSeries: 'two' as BakeSeries, // 組み立て台に置ける器の寸法の系統（ピザの鉄板・大きめの焼成パッド）
@@ -286,7 +286,7 @@ export const PIZZA_COUNTER = {
 // ピザの4番目の具（野菜ときのこ・ソーセージ・コーン）の容器（クック編 C3）。モッツァレラの容器の隣（手前 = 壁側）に、x 方向に3つ並べる。
 // 2台目の天板はソース・チーズ・モッツァレラ・組み立て台・スタックで埋まっているので、すき間なく続く3台目の天板の、モッツァレラ側の縁に置く
 // （位置は PIZZA_COUNTER の具材台の中心からの相対。zr が天板の半分 0.6 を超える = 隣の3台目の上）。大きさはモッツァレラの容器に近い、上が空いた四角い容器
-const PIZZA_TOP_TUB = 0.26;
+const PIZZA_TOP_TUB = 0.24; // クックの具材のケースと同じ大きさ
 export const PIZZA_TOP_TUBS = {
   w: PIZZA_TOP_TUB,
   d: PIZZA_TOP_TUB,
@@ -409,13 +409,25 @@ const shelfRelZ = (counterZr: number) => OVEN_COUNTER_ZS[0] + counterZr - SHELF_
 // 具材台の天板のストック容器（仮：1台目と3台目の天板）。counter = 何台目の具材台か、xr・zr = その具材台の中心からの相対（xr: 部屋の中央側、zr: 壁側）。
 // 1台目は作業枠（部屋の中央側の縁）より壁寄りのあき地、3台目はピザの具の容器より壁側（手前の端）。下調理したポテトは、作業枠にいちばん近い場所
 export const COOK_BIN = { w: 0.24, d: 0.24, h: 0.12 };
+
+// クックの具材のケース（14個）。冷蔵庫から取って、作業台のトレー置き場（CASE_SLOTS）に置く。並びは、最初（冷蔵庫・置き場）の順
+export const CASE_KEYS = ['potato', 'corn', 'patty', 'chicken', 'focaccia', 'cheeseSauceCup', 'demiglace', 'vegPaste', 'tarako', 'pizzaSauce', 'pizzaCheese', 'pizzaVegMushroom', 'pizzaSausage', 'pizzaCorn'] as const;
+// 作業台（クック側）のトレー置き場：ケース（COOK_BIN）と同じ大きさ。縦2列（x 方向）× 横7個（z 方向。以前のポテトの場所から、壁側へ並べる）。
+// 位置は1台目の具材台の中心からの相対（xr: 部屋の中央側、zr: 壁側）。オーブン側の端は、やっとこ・ヘラの置き場（TOOL_HOME）のために空けてある
+export const CASE_SLOTS = { counter: 0, rows: 2, cols: 7, xr: [-0.3, -0.04] as readonly number[], zr0: -0.1, pitch: 0.26 };
+export function caseSlotSpot(index: number): { xr: number; zr: number } {
+  const row = Math.floor(index / CASE_SLOTS.cols);
+  return { xr: CASE_SLOTS.xr[row], zr: CASE_SLOTS.zr0 + (index % CASE_SLOTS.cols) * CASE_SLOTS.pitch };
+}
+export const CASE_SLOT_COUNT = CASE_SLOTS.rows * CASE_SLOTS.cols;
 // y があるときは、天板ではなく、その高さの棚に乗る（作業台の置き物には数えない）
 export const COOK_BIN_SPOTS: Record<CookBinId, { counter: number; xr: number; zr: number; y?: number }> = {
-  potato: { counter: 0, xr: -0.02, zr: -0.3 },
-  corn: { counter: 0, xr: -0.31, zr: -0.3 },
-  patty: { counter: 0, xr: -0.6, zr: -0.3 },
-  chicken: { counter: 0, xr: -0.02, zr: 0.02 },
-  focaccia: { counter: 0, xr: -0.31, zr: 0.02 },
+  // 作業台に置くケースは、最初（冷蔵庫から出して置いたとき・テストなど）の置き場所（トレー置き場の番号は CASE_KEYS の順）
+  potato: { counter: 0, ...caseSlotSpot(0) },
+  corn: { counter: 0, ...caseSlotSpot(1) },
+  patty: { counter: 0, ...caseSlotSpot(2) },
+  chicken: { counter: 0, ...caseSlotSpot(3) },
+  focaccia: { counter: 0, ...caseSlotSpot(4) },
   // 卵の容器は、壁の吊り棚の広げた部分（1台目の具材台の上）
   egg: { counter: 0, xr: FROZEN_SHELF_SPAN.x - OVEN_COUNTER.x, zr: SHELF_EXTRA.egg, y: FROZEN_SHELF.y },
   // 3台目は、壁側の端に寄せる（天板のまん中と、部屋の中央側の角は、お皿・鉄板の山を置けるように空けておく）
@@ -426,20 +438,25 @@ export const COOK_BIN_SPOTS: Record<CookBinId, { counter: number; xr: number; zr
     zr: frozenBagSpot(2, SHELF_PROPS.length).z - OVEN_COUNTER_ZS[FROZEN_SHELF.counters[1]],
     y: FROZEN_SHELF.y,
   },
-  cheeseSauceCup: { counter: 2, xr: -0.39, zr: 0.45 },
-  demiglace: { counter: 2, xr: -0.12, zr: 0.45 },
-  vegPaste: { counter: 2, xr: 0.15, zr: 0.45 },
+  cheeseSauceCup: { counter: 0, ...caseSlotSpot(5) },
+  demiglace: { counter: 0, ...caseSlotSpot(6) },
+  vegPaste: { counter: 0, ...caseSlotSpot(7) },
   // クック用のたらこソース（クック編 C6。ヒートの取り出し元とは別。1台目の、ポテト・チキンの容器の列の壁側）
-  tarakoSauce: { counter: 0, xr: -0.02, zr: 0.34 },
+  tarakoSauce: { counter: 0, ...caseSlotSpot(8) },
 };
 
 // 冷凍の袋（4種類）は、2台目の具材台の壁寄りの縁に、z 方向に並べて立てる（もとはピザ生地・ピザの鉄板のスタックがあった場所。ピザ生地・鉄板は壁の吊り棚へ移した）。
 // 位置は具材台の中心からの相対（xr: 部屋の中央側、zr: 壁側）。i = 並びの番号、n = 袋の数
-export const FROZEN_BAG_ROW = { counter: 1, xr: -0.57, pitch: 0.3 };
+export const FROZEN_BAG_ROW = { counter: 1, xr: -0.62, pitch: 0.27 }; // 冷蔵庫から出して置いたパックの標準の場所（テスト・チュートリアル用。作業台のどこにでも置ける）
 export function frozenBagOnCounter(i: number, n: number): { xr: number; zr: number } {
   return { xr: FROZEN_BAG_ROW.xr, zr: (i - (n - 1) / 2) * FROZEN_BAG_ROW.pitch };
 }
-export const FROZEN_BAG_COUNT = 4;
+export const FROZEN_BAG_COUNT = 5;
+// 冷蔵庫から出して置いたパックの標準の場所（作業台の座標。i = パックの並びの番号）
+export function legacyBagSpot(i: number): { surface: 'prep'; x: number; z: number } {
+  const at = frozenBagOnCounter(i, 5);
+  return { surface: 'prep', x: at.xr, z: OVEN_COUNTER_ZS[FROZEN_BAG_ROW.counter] - OVEN_COUNTER_ROW.z + at.zr };
+} // 冷凍の袋4種類 + モッツァレラの袋
 
 // 台の上に自由に置く、使い終わった器・焼けた器（クック編 C7。以前の「焼けた器の置き場」の代わり）。3列系の器（受け台に乗せていない物）の大きさ。
 // 長い辺を x 方向（作業枠と同じ向き）に置く。置ける台は、道具と同じ（toolRestRange の説明）
@@ -466,20 +483,14 @@ export function overlapsShelfFixture(x: number, z: number, r: number): boolean {
 const counterZ = (i: number) => OVEN_COUNTER_ZS[i] - OVEN_COUNTER_ROW.z; // 何台目の具材台の中心か（作業台の中心からの相対）
 const pizzaAtZ = counterZ(PIZZA_COUNTER.counter);
 export const PREP_FIXTURES: readonly { x: number; z: number; hx: number; hz: number }[] = [
-  { x: PIZZA_COUNTER.sauce.xr, z: pizzaAtZ + PIZZA_COUNTER.sauce.zr, hx: PIZZA_COUNTER.sauce.w / 2, hz: PIZZA_COUNTER.sauce.d / 2 },
-  { x: PIZZA_COUNTER.cheese.xr, z: pizzaAtZ + PIZZA_COUNTER.cheese.zr, hx: PIZZA_COUNTER.cheese.w / 2, hz: PIZZA_COUNTER.cheese.d / 2 },
-  { x: PIZZA_COUNTER.mozz.xr, z: pizzaAtZ + PIZZA_COUNTER.mozz.zr, hx: PIZZA_COUNTER.mozz.w / 2, hz: PIZZA_COUNTER.mozz.d / 2 },
-  ...Object.values(PIZZA_TOP_TUBS.spots).map((t) => ({ x: t.xr, z: pizzaAtZ + t.zr, hx: PIZZA_TOP_TUBS.w / 2, hz: PIZZA_TOP_TUBS.d / 2 })),
   ...PIZZA_COUNTER.slots.map((s) => ({ x: s.xr, z: pizzaAtZ + s.zr, hx: PIZZA_COUNTER.slotR, hz: PIZZA_COUNTER.slotR })),
-  // 冷凍の袋（4つ）
-  ...Array.from({ length: FROZEN_BAG_COUNT }, (_, i) => {
-    const at = frozenBagOnCounter(i, FROZEN_BAG_COUNT);
-    return { x: at.xr, z: counterZ(FROZEN_BAG_ROW.counter) + at.zr, hx: FROZEN_SHELF.bag.d / 2 + 0.02, hz: FROZEN_SHELF.bag.w / 2 };
-  }),
   // 1台目の具材台の作業枠（3つ）
   ...WORK_FRAMES.slots.map((f) => ({ x: f.xr, z: counterZ(WORK_FRAMES.counter) + f.zr, hx: WORK_FRAMES.w / 2, hz: WORK_FRAMES.d / 2 })),
-  // ストック容器（クック編 C5）
-  ...Object.values(COOK_BIN_SPOTS).filter((b) => b.y === undefined).map((b) => ({ x: b.xr, z: counterZ(b.counter) + b.zr, hx: COOK_BIN.w / 2, hz: COOK_BIN.d / 2 })),
+  // クックの具材のケースのトレー置き場（縦2×横7の14か所）
+  ...Array.from({ length: CASE_SLOT_COUNT }, (_, i) => {
+    const at = caseSlotSpot(i);
+    return { x: at.xr, z: counterZ(CASE_SLOTS.counter) + at.zr, hx: COOK_BIN.w / 2, hz: COOK_BIN.d / 2 };
+  }),
 ];
 
 // ピザのお皿・鉄板（の山）を置ける台と、その範囲。置けない台（サラダ台・湯煎器の台）は null
@@ -514,6 +525,11 @@ export function flatRange(surface: SurfaceId, halfW: number, halfD: number): { m
   }
   return null;
 }
+// やっとこ・ヘラの最初の置き場所（作業台のオーブン側の端。トレー置き場より、オーブン側）。作業台の中心からの相対
+export const TOOL_HOME = {
+  tongs: { surface: 'prep' as const, x: -0.5, z: OVEN_COUNTER_ZS[0] - OVEN_COUNTER_ROW.z - 0.5 },
+  spatula: { surface: 'prep' as const, x: -0.5, z: OVEN_COUNTER_ZS[0] - OVEN_COUNTER_ROW.z - 0.38 },
+};
 // 左の台の提供台に、半分の大きさ (hx, hz) の長方形（中心が x, z。左の台の中心からの相対）が重なるか
 export function overlapsServePass(x: number, z: number, hx: number, hz: number): boolean {
   return Math.abs(SERVE_PASS.x - LEFT_COUNTER.x - x) < SERVE_PASS.size / 2 + hx && Math.abs(SERVE_PASS.z - LEFT_COUNTER.z - z) < SERVE_PASS.size / 2 + hz;

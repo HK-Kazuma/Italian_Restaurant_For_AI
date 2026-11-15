@@ -1,3 +1,4 @@
+import type { BagId } from './types';
 import { BAKE_FINISH_NAME, BAKE_LOAD_NAME, BAKE_VESSELS, baseOf, candidatesAt, canTakeBase, loadRoom, vesselCapacity, viewOf, whyNotLoad, type PrepYieldKey } from './bake';
 import type { GameConfig } from './config';
 import type { BakeFinishId, BakeLoadId, CookBinId, CupFill, FrozenBagId, Item, PizzaTopping, PrepStockId } from './types';
@@ -25,6 +26,8 @@ export const FROZEN_BAGS: Record<FrozenBagId, FrozenBagDef> = {
 export const bagDisplayName = (id: FrozenBagId): string => (id === 'potato' ? '冷凍ポテト' : FROZEN_BAGS[id].name);
 // 作業台に並べる順（左 = オーブン側から）
 export const FROZEN_BAG_IDS: readonly FrozenBagId[] = ['spicyChicken', 'popcornShrimp', 'potato', 'chorizo'];
+// 冷蔵庫から取って、作業台のどこにでも置けるパック（冷凍の袋4種類と、モッツァレラの袋）
+export const BAG_IDS: readonly BagId[] = [...FROZEN_BAG_IDS, 'mozzarella'];
 
 // 下調理のストック（数に限りがある）。load = 容器から取る具、start = 最初の数の設定値の名前
 export const PREP_STOCKS: Record<PrepStockId, { name: string; load: BakeLoadId; start: 'potatoStockStart' }> = {

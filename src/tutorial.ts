@@ -141,7 +141,7 @@ function fridgeUnitFor(s: GameState, at: GuideAt | null): FridgeUnit {
   return item ? s.fridgeItems[item].unit : 0;
 }
 const fridgeDoorOf = (unit: FridgeUnit): Target => ({ kind: 'fridgeDoor', unit });
-const fridgeName = (unit: FridgeUnit) => (unit === 1 ? '右側の冷蔵庫' : '冷蔵庫');
+const fridgeName = (unit: FridgeUnit) => (unit === 2 ? 'さらに右の冷蔵庫（3台目）' : unit === 1 ? '右側の冷蔵庫' : '冷蔵庫');
 const where = {
   burnerWithPot: (s: GameState): Target | null => {
     const i = burnerWithPot(s);
@@ -1343,7 +1343,7 @@ const RECIPES: Record<string, (k: Kit) => TutorialStep[]> = {
   squidInk: (k) => [
     k.noodleToBasket(),
     k.press,
-    k.openFridge(1), // イカ墨ソースとイカは、右側の冷蔵庫の中から直接取る
+    k.openFridge(2), // イカ墨ソースとイカは、3台目の冷蔵庫の中から直接取る
     k.potToBurner,
     k.sauceToPot('squidInkSauce', 1, stock('squidInkSauce'), { fridge: true }),
     k.sauceToPot('squid', 1, stock('squid'), { fridge: true }),
@@ -1360,7 +1360,7 @@ const RECIPES: Record<string, (k: Kit) => TutorialStep[]> = {
   mushroomCream: (k) => [
     k.noodleToBasket(),
     k.press,
-    k.openFridge(1), // ホワイトソース缶ときのこは、右側の冷蔵庫
+    k.openFridge(2), // ホワイトソース缶ときのこは、3台目の冷蔵庫
     k.trayToTable('mushroom'),
     k.trayToTable('spinach'),
     k.trayToTable('pancetta'),
@@ -1416,7 +1416,7 @@ const RECIPES: Record<string, (k: Kit) => TutorialStep[]> = {
     k.serve,
   ],
   wakameSalad: (k) => [
-    k.openFridge(1), // わかめは、右側の冷蔵庫
+    k.openFridge(2), // わかめは、3台目の冷蔵庫
     k.trayToTable('wakame'),
     k.plate('saladBase'),
     k.top('wakame', k.trayPlaced('wakame'), 2),
@@ -1425,7 +1425,7 @@ const RECIPES: Record<string, (k: Kit) => TutorialStep[]> = {
     k.serve,
   ],
   shrimpCocktail: (k) => [
-    k.openFridge(1),
+    k.openFridge(2),
     k.trayToTable('wakame'),
     k.trayToTable('shrimp'),
     k.plate('rim'),
@@ -1436,7 +1436,7 @@ const RECIPES: Record<string, (k: Kit) => TutorialStep[]> = {
     k.serve,
   ],
   steamedChicken: (k) => [
-    k.openFridge(1), // わかめ・野菜ペースト・ガルムソースは、右側の冷蔵庫
+    k.openFridge(2), // わかめ・野菜ペースト・ガルムソースは、3台目の冷蔵庫
     k.trayToTable('wakame'),
     k.trayToTable('vegPaste'),
     k.trayToTable('chicken'),

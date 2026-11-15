@@ -1,6 +1,17 @@
 import { BOTTLE_FRIDGE_ITEM } from './bottle';
 import { TRAY_FRIDGE_ITEM } from './tray';
+import type { BagId } from './types';
 import type { FridgeItemId, FridgeSpot, FridgeUnit, Target } from './types';
+
+// パックの、冷蔵庫の中の物としての id
+export const BAG_FRIDGE_ITEM: Record<BagId, FridgeItemId> = {
+  spicyChicken: 'bagSpicyChicken',
+  popcornShrimp: 'bagPopcornShrimp',
+  potato: 'bagPotato',
+  chorizo: 'bagChorizo',
+  mozzarella: 'bagMozzarella',
+};
+export const bagOfFridgeItem = (item: FridgeItemId): BagId | null => (Object.keys(BAG_FRIDGE_ITEM) as BagId[]).find((id) => BAG_FRIDGE_ITEM[id] === item) ?? null;
 
 // 冷蔵庫の中の物。右クリックで持ち上げて、棚の好きな場所に置き直せる（置き場所は state.fridgeItems）。
 // 座標は、物が入っている冷蔵庫（FridgeSpot.unit。冷蔵庫は2台ある）の基準点（前面の中央）からの相対：x は奥行き（0 = 扉側、0.8 = 奥）、z は幅。
@@ -29,6 +40,25 @@ export const FRIDGE_ITEM_IDS: FridgeItemId[] = [
   'dressingBottle',
   'paprikaBottle',
   'garumBottle',
+  'cPotatoCase',
+  'cCornCase',
+  'cPattyCase',
+  'cChickenCase',
+  'cFocacciaCase',
+  'cCheeseSauceCupCase',
+  'cDemiglaceCase',
+  'cVegPasteCase',
+  'cTarakoCase',
+  'pSauceCase',
+  'pCheeseCase',
+  'pVegMushroomCase',
+  'pSausageCase',
+  'pCornCase',
+  'bagSpicyChicken',
+  'bagPopcornShrimp',
+  'bagPotato',
+  'bagChorizo',
+  'bagMozzarella',
 ];
 
 export const FRIDGE_ITEM_NAME: Record<FridgeItemId, string> = {
@@ -55,6 +85,25 @@ export const FRIDGE_ITEM_NAME: Record<FridgeItemId, string> = {
   dressingBottle: 'ドレッシング',
   paprikaBottle: 'パプリカパウダー',
   garumBottle: 'ガルムソース',
+  cPotatoCase: 'ポテトのケース',
+  cCornCase: 'コーンのケース',
+  cPattyCase: 'パティのケース',
+  cChickenCase: 'チキンのケース',
+  cFocacciaCase: 'フォッカチオのケース',
+  cCheeseSauceCupCase: 'チーズソースの容器のケース',
+  cDemiglaceCase: 'デミグラスソースのケース',
+  cVegPasteCase: '野菜ペーストのケース（クック用）',
+  cTarakoCase: 'たらこソースのケース',
+  pSauceCase: 'ピザソースのケース',
+  pCheeseCase: 'ピザチーズのケース',
+  pVegMushroomCase: '野菜ときのこのケース',
+  pSausageCase: 'ソーセージのケース',
+  pCornCase: 'コーンのケース（ピザ用）',
+  bagSpicyChicken: '辛味チキン',
+  bagPopcornShrimp: 'ポップコーンシュリンプ',
+  bagPotato: '冷凍ポテト',
+  bagChorizo: 'チョリソー',
+  bagMozzarella: 'モッツァレラチーズ',
 };
 
 // 棚（最下段・下段・中段・上段）の天板の高さ。添字 0 = 最下段（庫内の底）
@@ -65,6 +114,8 @@ const SHELF_X = { min: 0.02, max: 0.78 };
 const SHELF_Z = { min: -0.96, max: 0.96 };
 
 // 物が棚の上で占める大きさ（半分の大きさ。x 方向 hx、z 方向 hz）。重なって置けない判定に使う
+const CASE_SIZE = { hx: 0.12, hz: 0.12 };
+const BAG_SIZE = { hx: 0.06, hz: 0.14 };
 export const FRIDGE_ITEM_SIZE: Record<FridgeItemId, { hx: number; hz: number }> = {
   saladBase: { hx: 0.17, hz: 0.17 },
   spinachTray: { hx: 0.15, hz: 0.18 },
@@ -89,7 +140,44 @@ export const FRIDGE_ITEM_SIZE: Record<FridgeItemId, { hx: number; hz: number }> 
   dressingBottle: { hx: 0.07, hz: 0.07 }, // ボトル（台の上と同じ 1.4 倍の大きさ）
   paprikaBottle: { hx: 0.07, hz: 0.07 },
   garumBottle: { hx: 0.07, hz: 0.07 },
+  // クックの具材のケース（作業台のトレー置き場と同じ大きさ）
+  cPotatoCase: CASE_SIZE,
+  cCornCase: CASE_SIZE,
+  cPattyCase: CASE_SIZE,
+  cChickenCase: CASE_SIZE,
+  cFocacciaCase: CASE_SIZE,
+  cCheeseSauceCupCase: CASE_SIZE,
+  cDemiglaceCase: CASE_SIZE,
+  cVegPasteCase: CASE_SIZE,
+  cTarakoCase: CASE_SIZE,
+  pSauceCase: CASE_SIZE,
+  pCheeseCase: CASE_SIZE,
+  pVegMushroomCase: CASE_SIZE,
+  pSausageCase: CASE_SIZE,
+  pCornCase: CASE_SIZE,
+  // パック（立てて入れる。袋の厚み 0.1、幅 0.26）
+  bagSpicyChicken: BAG_SIZE,
+  bagPopcornShrimp: BAG_SIZE,
+  bagPotato: BAG_SIZE,
+  bagChorizo: BAG_SIZE,
+  bagMozzarella: BAG_SIZE,
 };
+
+// 2台目の冷蔵庫の、横4列の位置（z）。上段から順に、ケース14個、パック2つ。3台目の最下段に、残りのパック3つ
+const COOK_COLUMNS = [-0.6, -0.2, 0.2, 0.6] as const;
+const CASE_FRIDGE_ITEMS = ['cPotatoCase', 'cCornCase', 'cPattyCase', 'cChickenCase', 'cFocacciaCase', 'cCheeseSauceCupCase', 'cDemiglaceCase', 'cVegPasteCase', 'cTarakoCase', 'pSauceCase', 'pCheeseCase', 'pVegMushroomCase', 'pSausageCase', 'pCornCase', 'bagSpicyChicken', 'bagPopcornShrimp'] as const;
+type CookFridgeId = (typeof CASE_FRIDGE_ITEMS)[number] | 'bagPotato' | 'bagChorizo' | 'bagMozzarella';
+function caseHomes(): Record<CookFridgeId, FridgeSpot> {
+  const out = {} as Record<CookFridgeId, FridgeSpot>;
+  CASE_FRIDGE_ITEMS.forEach((id, i) => {
+    out[id] = { unit: 1, shelf: (3 - Math.floor(i / COOK_COLUMNS.length)) as FridgeSpot['shelf'], x: 0.37, z: COOK_COLUMNS[i % COOK_COLUMNS.length] };
+  });
+  // 3台目の冷蔵庫の最下段（ガルムソースのボトルは中央）
+  out.bagPotato = { unit: 2, shelf: 0, x: 0.37, z: -0.3 };
+  out.bagChorizo = { unit: 2, shelf: 0, x: 0.37, z: 0.3 };
+  out.bagMozzarella = { unit: 2, shelf: 0, x: 0.37, z: 0.6 };
+  return out;
+}
 
 // 最初の置き場所
 export const FRIDGE_HOME: Record<FridgeItemId, FridgeSpot> = {
@@ -108,20 +196,22 @@ export const FRIDGE_HOME: Record<FridgeItemId, FridgeSpot> = {
   pancettaTray: { unit: 0, shelf: 2, x: 0.37, z: 0.7 },
   sauteSauceCase: { unit: 0, shelf: 2, x: 0.37, z: -0.7 },
   // 2台目の冷蔵庫（右側の空いていた冷蔵庫）：上段にイカ（冷蔵庫の中から直接取る）ときのこのトレー、中段にホワイトソース缶とイカ墨ソース（これも冷蔵庫の中から直接取る）
-  squid: { unit: 1, shelf: 3, x: 0.37, z: 0.5 },
-  mushroomTray: { unit: 1, shelf: 3, x: 0.37, z: -0.5 },
+  squid: { unit: 2, shelf: 3, x: 0.37, z: 0.5 },
+  mushroomTray: { unit: 2, shelf: 3, x: 0.37, z: -0.5 },
   // 右側の冷蔵庫の下段にわかめと野菜ペースト、最下段にガルムソースのボトル
-  wakameTray: { unit: 1, shelf: 1, x: 0.37, z: 0.55 },
-  vegPasteCase: { unit: 1, shelf: 1, x: 0.37, z: -0.5 },
-  garumBottle: { unit: 1, shelf: 0, x: 0.37, z: 0 },
-  whiteSauce: { unit: 1, shelf: 2, x: 0.37, z: 0.5 },
-  squidInkSauce: { unit: 1, shelf: 2, x: 0.37, z: -0.5 },
+  wakameTray: { unit: 2, shelf: 1, x: 0.37, z: 0.55 },
+  vegPasteCase: { unit: 2, shelf: 1, x: 0.37, z: -0.5 },
+  garumBottle: { unit: 2, shelf: 0, x: 0.37, z: 0 },
+  whiteSauce: { unit: 2, shelf: 2, x: 0.37, z: 0.5 },
+  squidInkSauce: { unit: 2, shelf: 2, x: 0.37, z: -0.5 },
   // 最下段：ガーリックと唐辛子の容器（取り出して、台の上の好きな場所に置く）
   garlicBin: { unit: 0, shelf: 0, x: 0.37, z: 0.25 },
   chiliBin: { unit: 0, shelf: 0, x: 0.37, z: -0.25 },
   // 最下段の両はし：ドレッシングとパプリカパウダーのボトル（取り出して、サラダ台の上に置く）
   dressingBottle: { unit: 0, shelf: 0, x: 0.37, z: 0.65 },
   paprikaBottle: { unit: 0, shelf: 0, x: 0.37, z: -0.65 },
+  // クックの具材のケースとパックは、2台目の冷蔵庫に、横4列ずつ棚に並べる（上段から）。入りきらないパック3つは、3台目の冷蔵庫の最下段
+  ...caseHomes(),
 };
 
 // 視点が合っている点を、物の大きさぶん棚板の内側に収める
@@ -204,6 +294,7 @@ export function fridgeItemOf(target: Target | null): FridgeItemId | null {
   if (!target) return null;
   if (target.kind === 'fridgeTray') return TRAY_FRIDGE_ITEM[target.id];
   if (target.kind === 'fridgeBottle') return BOTTLE_FRIDGE_ITEM[target.id];
+  if (target.kind === 'fridgeBag') return BAG_FRIDGE_ITEM[target.id];
   if (target.kind === 'stock' && target.inFridge) {
     return (FRIDGE_ITEM_IDS as string[]).includes(target.id) ? (target.id as FridgeItemId) : null;
   }

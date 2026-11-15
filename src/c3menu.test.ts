@@ -20,7 +20,7 @@ import {
 import { BOTTLE_BAKE_FINISH } from './bottle';
 import { DEFAULT_CONFIG as cfg } from './config';
 import { Game } from './game';
-import { OVEN_COUNTER, OVEN_COUNTER_ROW, OVEN_COUNTER_ZS, PIZZA_COUNTER, PIZZA_PLATE_GUIDE, PREP_FIXTURES, PIZZA_TOP_TUBS, SHELF_STACKS, SURFACES, WORK_FRAMES } from './layout';
+import { CASE_SLOTS, CASE_SLOT_COUNT, COOK_BIN, OVEN_COUNTER_ROW, OVEN_COUNTER_ZS, PIZZA_PLATE_GUIDE, PREP_FIXTURES, PIZZA_TOP_TUBS, SHELF_STACKS, SURFACES, WORK_FRAMES, caseSlotSpot } from './layout';
 import { bakeItem, frontS } from './oven';
 import { PIZZA_TOP_IDS, addTopping, canAddTopping, fourthOf, pizzaSignature, sauceCheesePizza, whyNotTopping } from './pizza';
 import { menusFor } from './position';
@@ -211,40 +211,30 @@ describe('ピザの4番目の具（pizza.ts）', () => {
     expect(pizzaLoad(addTopping(base, 'corn'))).toEqual({ dough: 1, pizzaSauce: 1, pizzaCheese: 1, corn: 1 });
   });
 
-  it('具の容器3つは、2台目の具材台のモッツァレラの隣。作業台の置き物（PREP_FIXTURES）に登録され、ほかの置き物と重ならない', () => {
-    const pizzaAtZ = OVEN_COUNTER_ZS[PIZZA_COUNTER.counter] - OVEN_COUNTER_ROW.z;
-    const tubs = PIZZA_TOP_IDS.map((id) => ({ x: PIZZA_TOP_TUBS.spots[id].xr, z: pizzaAtZ + PIZZA_TOP_TUBS.spots[id].zr, hx: PIZZA_TOP_TUBS.w / 2, hz: PIZZA_TOP_TUBS.d / 2 }));
-    for (const t of tubs) expect(PREP_FIXTURES.some((p) => Math.abs(p.x - t.x) < 1e-9 && Math.abs(p.z - t.z) < 1e-9)).toBe(true);
-    // モッツァレラの容器の、すぐ手前（壁側）
-    const mozzEdge = PIZZA_COUNTER.mozz.zr + PIZZA_COUNTER.mozz.d / 2;
-    for (const id of PIZZA_TOP_IDS) {
-      expect(PIZZA_TOP_TUBS.spots[id].zr - PIZZA_TOP_TUBS.d / 2).toBeGreaterThan(mozzEdge);
-      expect(PIZZA_TOP_TUBS.spots[id].zr - PIZZA_TOP_TUBS.d / 2 - mozzEdge).toBeLessThan(0.2);
-    }
-    // 作業台の天板の中
-    for (const t of tubs) {
-      expect(Math.abs(t.x) + t.hx).toBeLessThanOrEqual(SURFACES.prep.width / 2);
-      expect(Math.abs(t.z) + t.hz).toBeLessThanOrEqual(SURFACES.prep.depth / 2);
-    }
-    // 重ならない
+  it('具の容器3つ（野菜ときのこ・ソーセージ・コーン）は、クックの具材のケースと同じ大きさ。作業台のトレー置き場（縦2×横7）に置く', () => {
+    expect(PIZZA_TOP_TUBS.w).toBe(COOK_BIN.w);
+    expect(PIZZA_TOP_TUBS.d).toBe(COOK_BIN.d);
+    // 作業台のトレー置き場は14か所（作業台の置き物に登録され、ほかの置き物と重ならず、作業台の天板の中）
+    expect(CASE_SLOT_COUNT).toBe(14);
     for (let i = 0; i < PREP_FIXTURES.length; i++) {
+      const a = PREP_FIXTURES[i];
+      expect(Math.abs(a.x) + a.hx).toBeLessThanOrEqual(SURFACES.prep.width / 2 + 1e-6);
+      expect(Math.abs(a.z) + a.hz).toBeLessThanOrEqual(SURFACES.prep.depth / 2 + 1e-6);
       for (let j = i + 1; j < PREP_FIXTURES.length; j++) {
-        const a = PREP_FIXTURES[i];
         const b = PREP_FIXTURES[j];
         expect(Math.abs(a.x - b.x) < a.hx + b.hx - 1e-6 && Math.abs(a.z - b.z) < a.hz + b.hz - 1e-6, `${i} と ${j}`).toBe(false);
       }
     }
-    expect(OVEN_COUNTER.width).toBeGreaterThan(0);
     expect(WORK_FRAMES.slots.length).toBe(3);
   });
 
-  it('具の容器の上には、お皿・鉄板を置けない', () => {
+  it('トレー置き場の上には、お皿・鉄板を置けない', () => {
     const g = cookGame();
     g.state.hand = { kind: 'panPile', count: 2 };
-    const pizzaAtZ = OVEN_COUNTER_ZS[PIZZA_COUNTER.counter] - OVEN_COUNTER_ROW.z;
-    for (const id of PIZZA_TOP_IDS) {
-      const t = PIZZA_TOP_TUBS.spots[id];
-      expect(g.previewProp({ kind: 'tableTop', surface: 'prep', x: t.xr, z: pizzaAtZ + t.zr }), id).toMatchObject({ valid: false, reason: 'gap' });
+    for (let i = 0; i < CASE_SLOT_COUNT; i++) {
+      const at = caseSlotSpot(i);
+      const z = OVEN_COUNTER_ZS[CASE_SLOTS.counter] - OVEN_COUNTER_ROW.z + at.zr;
+      expect(g.previewProp({ kind: 'tableTop', surface: 'prep', x: at.xr, z }), `置き場${i}`).toMatchObject({ valid: false, reason: 'gap' });
     }
   });
 });

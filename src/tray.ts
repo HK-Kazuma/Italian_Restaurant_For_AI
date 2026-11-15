@@ -1,5 +1,6 @@
 import { INGREDIENTS } from './ingredients';
-import type { FreeTrayId, FridgeItemId, GameState, IngredientId, TrayId, TrayZone } from './types';
+import { CASE_SLOT_COUNT } from './layout';
+import type { FreeTrayId, FridgeItemId, GameState, IngredientId, Target, TrayId, TrayZone } from './types';
 
 // トレー・ケース：冷蔵庫から取って、サラダ台の置き場に置くと、中身を1回分ずつ取れる。
 // 置き場の名前は、どれも「トレー置き場」。置き場は区画（TrayZone）ごとにあり、その区画に置ける種類だけが置ける：
@@ -8,17 +9,48 @@ import type { FreeTrayId, FridgeItemId, GameState, IngredientId, TrayId, TrayZon
 // ガーリック・唐辛子の容器だけは置き場（区画）を持たず、ボトルと同じように台の上のどこにでも置ける（FREE_TRAY_IDS。置き場所は state.freeTraySpot）。
 // 置き場の位置は scene.ts。ここは種類と区画の対応、名前、置き場の空きなど、位置に関係ない決まりだけ。
 
-export const TRAY_IDS: TrayId[] = ['spinach', 'saltOil', 'shrimp', 'chicken', 'pancetta', 'mushroom', 'wakame', 'vegPaste', 'sauteSauce', 'tomatoSauce', 'garlic', 'chili'];
+// クックの具材のケース（作業台のトレー置き場に置く。置いたケースは、それぞれ cookBin / pizzaSource の対象になる）。並びは layout.ts の CASE_KEYS と同じ
+export const CASE_TRAY_IDS = ['cPotato', 'cCorn', 'cPatty', 'cChicken', 'cFocaccia', 'cCheeseSauceCup', 'cDemiglace', 'cVegPaste', 'cTarako', 'pSauce', 'pCheese', 'pVegMushroom', 'pSausage', 'pCorn'] as const;
+export type CaseTrayId = (typeof CASE_TRAY_IDS)[number];
+export const isCaseTray = (id: string): id is CaseTrayId => (CASE_TRAY_IDS as readonly string[]).includes(id);
+// ケースの中身を使う対象（ケースを作業台に置くと、この対象で操作できる）
+export const CASE_TARGET: Record<CaseTrayId, Target> = {
+  cPotato: { kind: 'cookBin', id: 'potato' },
+  cCorn: { kind: 'cookBin', id: 'corn' },
+  cPatty: { kind: 'cookBin', id: 'patty' },
+  cChicken: { kind: 'cookBin', id: 'chicken' },
+  cFocaccia: { kind: 'cookBin', id: 'focaccia' },
+  cCheeseSauceCup: { kind: 'cookBin', id: 'cheeseSauceCup' },
+  cDemiglace: { kind: 'cookBin', id: 'demiglace' },
+  cVegPaste: { kind: 'cookBin', id: 'vegPaste' },
+  cTarako: { kind: 'cookBin', id: 'tarakoSauce' },
+  pSauce: { kind: 'pizzaSource', id: 'sauce' },
+  pCheese: { kind: 'pizzaSource', id: 'cheese' },
+  pVegMushroom: { kind: 'pizzaSource', id: 'vegMushroom' },
+  pSausage: { kind: 'pizzaSource', id: 'sausage' },
+  pCorn: { kind: 'pizzaSource', id: 'corn' },
+};
+// 作業台に置いたケースか、そのケースの対象に視点が合っているときの、ケース（なければ null）
+export function caseOfTarget(target: Target | null): CaseTrayId | null {
+  if (target?.kind !== 'cookBin' && target?.kind !== 'pizzaSource') return null;
+  return CASE_TRAY_IDS.find((id) => {
+    const t = CASE_TARGET[id];
+    return t.kind === target.kind && (t as { id: string }).id === target.id;
+  }) ?? null;
+}
+
+export const TRAY_IDS: TrayId[] = ['spinach', 'saltOil', 'shrimp', 'chicken', 'pancetta', 'mushroom', 'wakame', 'vegPaste', 'sauteSauce', 'tomatoSauce', 'garlic', 'chili', ...CASE_TRAY_IDS];
 
 // 台の上のどこにでも置ける容器
 export const FREE_TRAY_IDS: FreeTrayId[] = ['garlic', 'chili'];
 export const isFreeTray = (id: string): id is FreeTrayId => (FREE_TRAY_IDS as string[]).includes(id);
 
 // その区画の置き場の数（scene.ts の置き場の定義と合わせる）
-export const TRAY_SPOT_COUNT: Record<TrayZone, number> = { spinach: 1, topping: 10 };
+export const TRAY_SPOT_COUNT: Record<TrayZone, number> = { spinach: 1, topping: 10, cook: CASE_SLOT_COUNT };
 
 // null = 置き場（区画）を持たない（台の上のどこにでも置ける）
 export const TRAY_ZONE: Record<TrayId, TrayZone | null> = {
+  ...(Object.fromEntries(CASE_TRAY_IDS.map((id) => [id, 'cook'])) as Record<CaseTrayId, TrayZone>),
   spinach: 'spinach',
   saltOil: 'topping',
   shrimp: 'topping',
@@ -34,7 +66,7 @@ export const TRAY_ZONE: Record<TrayId, TrayZone | null> = {
 };
 
 // 置き場から取れる中身
-export const TRAY_CONTENT: Record<TrayId, IngredientId> = {
+export const TRAY_CONTENT: Record<Exclude<TrayId, CaseTrayId>, IngredientId> = {
   spinach: 'spinach',
   saltOil: 'saltOilSauce',
   shrimp: 'shrimp',
@@ -51,6 +83,20 @@ export const TRAY_CONTENT: Record<TrayId, IngredientId> = {
 
 // 手に持ったときの名前
 export const TRAY_NAME: Record<TrayId, string> = {
+  cPotato: 'ポテトのケース',
+  cCorn: 'コーンのケース',
+  cPatty: 'パティのケース',
+  cChicken: 'チキンのケース',
+  cFocaccia: 'フォッカチオのケース',
+  cCheeseSauceCup: 'チーズソースの容器のケース',
+  cDemiglace: 'デミグラスソースのケース',
+  cVegPaste: '野菜ペーストのケース（クック用）',
+  cTarako: 'たらこソースのケース',
+  pSauce: 'ピザソースのケース',
+  pCheese: 'ピザチーズのケース',
+  pVegMushroom: '野菜ときのこのケース',
+  pSausage: 'ソーセージのケース',
+  pCorn: 'コーンのケース（ピザ用）',
   spinach: 'ほうれん草のトレー',
   saltOil: '塩オイルソースのケース',
   shrimp: '小エビのトレー',
@@ -66,13 +112,27 @@ export const TRAY_NAME: Record<TrayId, string> = {
 };
 
 // 置いたあとに置き場に出す名前（中身の名前）
-export const trayContentName = (id: TrayId): string => INGREDIENTS[TRAY_CONTENT[id]].name;
+export const trayContentName = (id: TrayId): string => (isCaseTray(id) ? TRAY_NAME[id] : INGREDIENTS[TRAY_CONTENT[id]].name);
 
 // 何も置いていない置き場の名前
-export const TRAY_ZONE_NAME: Record<TrayZone, string> = { spinach: 'トレー置き場', topping: 'トレー置き場' };
+export const TRAY_ZONE_NAME: Record<TrayZone, string> = { spinach: 'トレー置き場', topping: 'トレー置き場', cook: 'トレー置き場' };
 
 // 冷蔵庫の中の物としての id
 export const TRAY_FRIDGE_ITEM: Record<TrayId, FridgeItemId> = {
+  cPotato: 'cPotatoCase',
+  cCorn: 'cCornCase',
+  cPatty: 'cPattyCase',
+  cChicken: 'cChickenCase',
+  cFocaccia: 'cFocacciaCase',
+  cCheeseSauceCup: 'cCheeseSauceCupCase',
+  cDemiglace: 'cDemiglaceCase',
+  cVegPaste: 'cVegPasteCase',
+  cTarako: 'cTarakoCase',
+  pSauce: 'pSauceCase',
+  pCheese: 'pCheeseCase',
+  pVegMushroom: 'pVegMushroomCase',
+  pSausage: 'pSausageCase',
+  pCorn: 'pCornCase',
   spinach: 'spinachTray',
   saltOil: 'saltOilCase',
   shrimp: 'shrimpTray',

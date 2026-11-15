@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CONFIG as cfg } from './config';
 import { Game } from './game';
-import { OVEN_COUNTER, OVEN_COUNTER_ZS, PIZZA_COUNTER, PIZZA_PLATE_STACK, PROP_RANGE, PROP_RANGE_PREP, SURFACES } from './layout';
+import { COOK_BIN, OVEN_COUNTER, OVEN_COUNTER_ZS, PIZZA_COUNTER, PIZZA_PLATE_STACK, PROP_RANGE, PROP_RANGE_PREP, SURFACES } from './layout';
 import { bakeItem, frontS } from './oven';
 import { MOZZ_TOTAL, addTopping, canAddTopping, emptyPan, isBuffalo, mozzSpots, pizzaName, pizzaOf, whyNotTopping } from './pizza';
 import type { PizzaBuild, Target } from './types';
@@ -117,9 +117,11 @@ describe('ピザの具のルール（pizza.ts）', () => {
 });
 
 describe('置き場（layout.ts）', () => {
-  it('ソース（正方形）・チーズ（長方形。z 方向に長い）の容器の形', () => {
+  it('ソース・チーズの容器は、クックの具材のケースと同じ大きさ（正方形）', () => {
     expect(PIZZA_COUNTER.sauce.w).toBe(PIZZA_COUNTER.sauce.d);
-    expect(PIZZA_COUNTER.cheese.d).toBeGreaterThan(PIZZA_COUNTER.cheese.w);
+    expect(PIZZA_COUNTER.cheese.w).toBe(PIZZA_COUNTER.cheese.d);
+    expect(PIZZA_COUNTER.sauce.w).toBe(COOK_BIN.w);
+    expect(PIZZA_COUNTER.cheese.w).toBe(COOK_BIN.w);
   });
 
   it('置き物は、具材台の天板の内側に収まり、重ならない', () => {

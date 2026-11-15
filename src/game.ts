@@ -21,7 +21,7 @@ import {
 } from './pot';
 import { BAKE_STATE_NAME, OVEN_DECK_NAME, bakeItem, bakeTime, canTakeDish, createOven, itemFromOven, ovenDishItem, peekDish, placeDish, resolvePlacement, takeDish, timeToEmerge, updateOven } from './oven';
 import { canStackPack, createPack, findWarmPack, soakPack, stockItem } from './pack';
-import { CUP_FILLS, FROZEN_BAGS, PREP_STOCKS, SOURCE_RIGHT_TAKE, bagClick, bagHint, binHint, cupFillWith, cupNext, emptyYield, flipLoadOf, initialPrepStock, isPourHand, pourHint, pourInto, rightTakeOf, takeFromBin, whyNotPour } from './cookStock';
+import { BAG_IDS, CUP_FILLS, FROZEN_BAGS, PREP_STOCKS, SOURCE_RIGHT_TAKE, bagClick, bagHint, binHint, cupFillWith, cupNext, emptyYield, flipLoadOf, initialPrepStock, isPourHand, pourHint, pourInto, rightTakeOf, takeFromBin, whyNotPour } from './cookStock';
 import { findMatchingTicket, findSauceRecipe, getMenu } from './recipe';
 import { PIZZA_TOPPING_NAME, PIZZA_TOPS, addTopping, canAddTopping, emptyPan, isPizzaTop, pizzaOf, whyNotTopping } from './pizza';
 import { serveScore } from './score';
@@ -30,12 +30,12 @@ import { DEFAULT_POSITION, PRACTICE_POSITION, menusFor } from './position';
 import { createTicket, nextTicketInterval, pickMenu } from './tickets';
 import { tutorialSteps, type GuideAt, type TutorialStep, type TutorialView } from './tutorial';
 import { BOTTLE_ACTION, BOTTLE_BAKE_FINISH, BOTTLE_BAKE_LOAD, BOTTLE_FRIDGE_ITEM, BOTTLE_IDS, BOTTLE_PLATE, BOTTLE_SURFACES, BOTTLE_VERB, bottleOfFridgeItem, isFridgeBottle } from './bottle';
-import { FRIDGE_HOME, FRIDGE_ITEM_IDS, FRIDGE_ITEM_NAME, clampOnShelf, fitsOnShelf, fridgeItemOf, returnToFridge } from './fridge';
-import { BAKE_DISHES, BOTTLE_HOME, OVEN_STOCK_NAME, FREE_TRAY_HOME, GETA, GETA_HOME, GETA_RANGE, PIZZA_COUNTER, PIZZA_PLATE_R, PIZZA_PLATE_STACK, SHELF_STACKS, SURFACES, REST_DISH, TOOL_REST, WORK_FRAMES, overlapsLeftFixture, overlapsPrepFixture, overlapsServePass, overlapsShelfFixture, flatRange, propRange, toolRestRange } from './layout';
+import { FRIDGE_HOME, FRIDGE_ITEM_IDS, FRIDGE_ITEM_NAME, BAG_FRIDGE_ITEM, bagOfFridgeItem, clampOnShelf, fitsOnShelf, fridgeItemOf, returnToFridge } from './fridge';
+import { BAKE_DISHES, BOTTLE_HOME, OVEN_STOCK_NAME, FREE_TRAY_HOME, GETA, GETA_HOME, GETA_RANGE, PIZZA_COUNTER, PIZZA_PLATE_R, PIZZA_PLATE_STACK, SHELF_STACKS, SURFACES, REST_DISH, TOOL_HOME, TOOL_REST, WORK_FRAMES, legacyBagSpot, overlapsLeftFixture, overlapsPrepFixture, overlapsServePass, overlapsShelfFixture, flatRange, propRange, toolRestRange } from './layout';
 import { OPEN_WORLD, launchPot, stepThrownPot, type ThrowAim } from './throw';
 import type { World } from './world';
-import { FREE_TRAY_IDS, TRAY_CONTENT, TRAY_FRIDGE_ITEM, TRAY_IDS, TRAY_NAME, TRAY_ZONE, isFreeTray, trayAt, trayOfFridgeItem } from './tray';
-import type { BakeBase, BakeFinishId, BakeStyle, BottleId, CookBinId, PlateDish, ToolHand, ToolId, BottlePreview, GetaPreview, OvenPreview, PropPreview, BottleSpot, FreeTrayId, FridgeItemId, FridgePreview, FridgeSpot, FridgeUnit, GameState, IngredientId, Item, Mode, Phase, Position, Pot, TableSpot, Target, Ticket, Toast, RestPreview, ToolPreview, TrayId, WorkFrameItem } from './types';
+import { CASE_TRAY_IDS, FREE_TRAY_IDS, TRAY_CONTENT, TRAY_FRIDGE_ITEM, TRAY_IDS, TRAY_NAME, TRAY_ZONE, caseOfTarget, isCaseTray, isFreeTray, trayAt, trayOfFridgeItem } from './tray';
+import type { BakeBase, BakeFinishId, BakeStyle, BottleId, CookBinId, PlateDish, ToolHand, ToolId, BottlePreview, GetaPreview, OvenPreview, PropPreview, BottleSpot, FreeTrayId, FridgeItemId, FridgePreview, FridgeSpot, FridgeUnit, BagId, GameState, IngredientId, Item, Mode, Phase, Position, Pot, TableSpot, Target, Ticket, Toast, RestPreview, ToolPreview, TrayId, WorkFrameItem } from './types';
 
 // クリックしたら起きること。null = 今の手持ちではこの設備に何もできない
 type Action = () => void;
@@ -117,6 +117,9 @@ const shelfLabel = (dish: string | undefined): string | undefined => SHELF_STACK
 const copySpot = (spot: BottleSpot): BottleSpot => (spot ? { ...spot } : null);
 
 // ボトルをサラダ台の上に置くときの決まり
+// 冷蔵庫から出した、パック（冷凍の袋・モッツァレラの袋）の大きさ（作業台の上。x = 厚み、z = 幅。上から見た大きさ）
+const BAG_REST = { w: 0.1, d: 0.26 };
+const BAG_FRIDGE_ITEM_OF = (id: BagId): FridgeItemId => BAG_FRIDGE_ITEM[id];
 const BOTTLE_EDGE = 0.06; // 天板の縁から、これだけ内側までしか置けない
 const BOTTLE_GAP = 0.14; // ボトルどうしの最小の間隔
 
@@ -154,12 +157,16 @@ export class Game {
       time: 0,
       hand: null,
       tool: null, // 道具は、毎回フックに掛かった状態から（練習からゲームに入るときも、フックに戻る）
-      toolSpots: { tongs: null, spatula: null },
+      // やっとこ・ヘラは、本番では作業台の上（オーブン側の端）に置いてある。そうでなければフック
+      toolSpots: this.cfg.fridgeCookSetup ? { tongs: { ...TOOL_HOME.tongs }, spatula: { ...TOOL_HOME.spatula } } : { tongs: null, spatula: null },
+      // パック（冷凍の袋4種類とモッツァレラ）は、本番では冷蔵庫の中、そうでなければ作業台の上
+      bags: Object.fromEntries(BAG_IDS.map((id, i) => [id, this.cfg.fridgeCookSetup ? { at: 'fridge' } : { at: 'table', spot: legacyBagSpot(i) }])) as GameState['bags'],
       boilers: Array.from({ length: this.cfg.boilerCount }, createBoiler),
       plateSlots: Array.from({ length: this.cfg.plateSlotCount + this.cfg.saladSlotCount }, () => null),
       plateStyles: Array.from({ length: this.cfg.plateSlotCount + this.cfg.saladSlotCount }, () => 'plate' as const),
-      trays: Object.fromEntries(TRAY_IDS.map((id) => [id, layout?.trays[id] ?? 'fridge'])) as GameState['trays'],
-      traySpot: Object.fromEntries(TRAY_IDS.map((id) => [id, layout?.traySpot[id] ?? 0])) as GameState['traySpot'],
+      // クックの具材のケースは、本番（fridgeCookSetup）では冷蔵庫の中、そうでなければ作業台のトレー置き場（CASE_TRAY_IDS の順）に置いてある
+      trays: Object.fromEntries(TRAY_IDS.map((id) => [id, layout?.trays[id] ?? (isCaseTray(id) && !this.cfg.fridgeCookSetup ? 'table' : 'fridge')])) as GameState['trays'],
+      traySpot: Object.fromEntries(TRAY_IDS.map((id) => [id, layout?.traySpot[id] ?? (isCaseTray(id) ? CASE_TRAY_IDS.indexOf(id) : 0)])) as GameState['traySpot'],
       freeTraySpot: Object.fromEntries(FREE_TRAY_IDS.map((id) => [id, { ...(layout?.freeTraySpot[id] ?? FREE_TRAY_HOME[id]) }])) as Record<FreeTrayId, TableSpot>,
       fridgeOpen: [false, false, false],
       fridgeItems: Object.fromEntries(FRIDGE_ITEM_IDS.map((id) => [id, { ...(fridge ?? FRIDGE_HOME)[id] }])) as Record<FridgeItemId, FridgeSpot>,
@@ -263,10 +270,23 @@ export class Game {
     if (!steps) return false;
     this.state = this.initialState('playing', 'practice', this.carriedLayout());
     const s = this.state;
+    this.tableCookSetup();
     s.tickets = [createTicket(s.nextTicketId++, getMenu(menuId), s.time)];
     s.nextTicketAt = Infinity; // ほかの伝票は届かない
     s.tutorial = { menuId, step: 0, total: steps.length };
     return true;
+  }
+
+  // チュートリアルでは、ケース・パックは作業台に出てあり、道具はフックに掛かっている状態から始める（冷蔵庫から出す手順は、教えない）
+  private tableCookSetup(): void {
+    const s = this.state;
+    for (const id of CASE_TRAY_IDS) {
+      s.trays[id] = 'table';
+      s.traySpot[id] = CASE_TRAY_IDS.indexOf(id);
+    }
+    BAG_IDS.forEach((id, i) => (s.bags[id] = { at: 'table', spot: legacyBagSpot(i) }));
+    s.toolSpots = { tongs: null, spatula: null };
+    s.tool = null;
   }
 
   // チュートリアルをやめる（最後まで終わったときも、これで終わる）。厨房はそのまま、練習キッチンに戻る（伝票も、また届くようになる）
@@ -407,7 +427,7 @@ export class Game {
   //  - ヘラ：作業枠の器をはがす。焼けた器から1つすくい、作業枠の仕上げ中の焼き物にのせる
   planTool(target: Target): ToolPlan | null {
     const s = this.state;
-    if (s.phase !== 'playing' || s.moving || s.getaMoving) return null;
+    if (s.phase !== 'playing' || s.moving || s.getaMoving || !this.reachable(target)) return null;
     if (target.kind === 'toolHook') return this.planHook(target.id);
     if (target.kind === 'placedTool') return this.planPlacedTool(target.id);
     if (target.kind === 'tableTop') return this.planToolDown(target);
@@ -468,6 +488,22 @@ export class Game {
         s.tool = newTool(id);
       },
     };
+  }
+
+  // 冷蔵庫の中・手の中にあるケース・パックは、作業台の上では使えない（そのケース・パックが台の上に出ているときだけ、中身を取れる）
+  private reachable(target: Target): boolean {
+    const s = this.state;
+    const c = caseOfTarget(target);
+    if (c) return s.trays[c] === 'table';
+    const bag = this.bagOfTarget(target);
+    return !bag || s.bags[bag].at === 'table';
+  }
+
+  // 台の上に置いたパックに視点が合っているときの、そのパック（冷凍の袋・モッツァレラの袋。なければ null）
+  private bagOfTarget(target: Target | null): BagId | null {
+    if (target?.kind === 'frozenBag') return target.id;
+    if (target?.kind === 'pizzaSource' && target.id === 'mozzarella') return 'mozzarella';
+    return null;
   }
 
   // 持っている空の道具を、視点が合っている台の天板にべた置きする（置ける場所のときだけ）
@@ -755,9 +791,31 @@ export class Game {
       this.propNearRect(surface, x, z, hx, hz) ||
       this.toolNear(surface, x, z, hx, hz, exceptTool) ||
       this.restNear(surface, x, z, hx, hz) ||
+      this.bagNear(surface, x, z, hx, hz) ||
       (surface === 'left' && (overlapsLeftFixture(x, z, hx, hz) || overlapsServePass(x, z, hx, hz))) ||
       (surface === 'prep' && overlapsPrepFixture(x, z, hx, hz))
     );
+  }
+
+  // 手に持ったパックを、視点が合っている作業台の天板に置くとしたら、どこにどう置かれるか。作業台のトレー置き場・作業枠・組み立て台・ほかの置き物には重ねられない
+  previewBag(target: Target | null): RestPreview | null {
+    const s = this.state;
+    if (s.phase !== 'playing' || s.hand?.kind !== 'packBag' || target?.kind !== 'tableTop') return null;
+    const { surface } = target;
+    const range = surface === 'prep' ? flatRange(surface, BAG_REST.w / 2, BAG_REST.d / 2) : null;
+    if (!range) return { surface, x: target.x, z: target.z, valid: false, reason: 'surface', size: { ...BAG_REST } };
+    const x = Math.min(range.maxX, Math.max(range.minX, target.x));
+    const z = Math.min(range.maxZ, Math.max(range.minZ, target.z));
+    const size = { ...BAG_REST };
+    return this.flatBlocked(surface, x, z, BAG_REST.w / 2, BAG_REST.d / 2) ? { surface, x, z, valid: false, reason: 'gap', size } : { surface, x, z, valid: true, size };
+  }
+
+  // 台の上に置いたパックが、中心 (x, z)・半分の大きさ (hx, hz) の長方形にかかっているか
+  private bagNear(surface: string, x: number, z: number, hx: number, hz: number): boolean {
+    return BAG_IDS.some((id) => {
+      const p = this.state.bags[id];
+      return p.at === 'table' && p.spot.surface === surface && Math.abs(p.spot.x - x) < BAG_REST.w / 2 + hx && Math.abs(p.spot.z - z) < BAG_REST.d / 2 + hz;
+    });
   }
 
   // 台の上に置いた器が、中心 (x, z)・半分の大きさ (hx, hz) の長方形にかかっているか
@@ -929,11 +987,20 @@ export class Game {
     }
     // サラダ台に置いたトレー・ケースを、手が空なら持ち上げる（別の置き場に置き直せる）
     const placed = this.placedTrayOf(target);
-    if (!s.hand && placed) {
+    // （ピザチーズのケースは、右クリックで1/2杯を取る操作が先。ケースごと持ち上げる操作は、手が空でないときにはない）
+    if (!s.hand && placed && !(caseOfTarget(target) && this.planRightClick(target))) {
       s.hand = { kind: 'tray', id: placed };
       s.trays[placed] = 'hand';
       const where = isFreeTray(placed) ? '台の上に視点を合わせて左クリックで置く' : '置き場に視点を合わせて左クリックで置く';
       this.say(`${TRAY_NAME[placed]}を持ち上げた（${where}）`, 'info');
+      return;
+    }
+    // 台の上に置いたパックを、手が空なら持ち上げる（別の場所に置き直せる）
+    const placedBag = this.bagOfTarget(target);
+    if (!s.hand && placedBag && s.bags[placedBag].at === 'table') {
+      s.hand = { kind: 'packBag', id: placedBag };
+      s.bags[placedBag] = { at: 'hand' };
+      this.say(`${FRIDGE_ITEM_NAME[BAG_FRIDGE_ITEM_OF(placedBag)]}を持ち上げた（作業台に視点を合わせて左クリックで置く）`, 'info');
       return;
     }
     // 手が空で、使い終わった鉄板の山に視点が合っていれば、山ごと持ち上げる（台に置き直す・ストックが0のとき作業台の鉄板のスタックに戻す）
@@ -1025,6 +1092,8 @@ export class Game {
   private isInFridge(id: FridgeItemId): boolean {
     const tray = trayOfFridgeItem(id);
     if (tray) return this.state.trays[tray] === 'fridge';
+    const bag = bagOfFridgeItem(id);
+    if (bag) return this.state.bags[bag].at === 'fridge';
     const bottle = bottleOfFridgeItem(id);
     return bottle ? this.bottleInFridge(bottle) : true;
   }
@@ -1043,6 +1112,8 @@ export class Game {
   // 視点が合っている、台に置いてあるトレー・ケース（置き場に置いた物も、台の上のどこかに置いた容器も。なければ null）
   placedTrayOf(target: Target | null): TrayId | null {
     if (target?.kind === 'tableTray') return this.state.trays[target.id] === 'table' ? target.id : null;
+    const c = caseOfTarget(target);
+    if (c) return this.state.trays[c] === 'table' ? c : null; // 作業台に置いたケース
     return this.trayAtSlot(target);
   }
 
@@ -1137,6 +1208,7 @@ export class Game {
       this.propNear(surface, x, z, r) ||
       this.toolNear(surface, x, z, r, r) ||
       this.restNear(surface, x, z, r, r) ||
+      this.bagNear(surface, x, z, r, r) ||
       (surface === 'left' && overlapsLeftFixture(x, z, r, r, true)) ||
       (surface === 'prep' && overlapsPrepFixture(x, z, r));
     return { what, surface, x, z, r, valid: !blocked, ...(blocked ? { reason: 'gap' as const } : {}) };
@@ -1483,6 +1555,7 @@ export class Game {
       this.propNear(surface, x, z, 0.06) || // ピザのお皿・鉄板の山の上にも置かない
       this.toolNear(surface, x, z, 0.06, 0.06) || // 台に置いた道具の上にも置かない
       this.restNear(surface, x, z, 0.06, 0.06) || // 台に置いた器の上にも置かない
+      this.bagNear(surface, x, z, 0.06, 0.06) || // 台に置いたパックの上にも置かない
       (surface === 'left' && overlapsLeftFixture(x, z, 0.06, 0.06, true)) || // 板・小皿の山の上にも置かない
       (surface === 'prep' && overlapsPrepFixture(x, z, 0.06)) || // 作業台の、作業枠・容器・組み立て台の上にも置かない（クック用のボトル）
       (surface === 'shelf' && overlapsShelfFixture(x, z, 0.06)); // 棚の、ピザ生地・鉄板・容器の上にも置かない
@@ -1608,6 +1681,10 @@ export class Game {
       this.say(isFreeTray(s.hand.id) ? '容器は捨てられない（台の上に置く）' : 'トレー・ケースは捨てられない（サラダ台の置き場に置く）', 'info');
       return;
     }
+    if (s.hand.kind === 'packBag') {
+      this.say('パックは捨てられない（作業台に置く）', 'info');
+      return;
+    }
     if (s.hand.kind === 'ipad') {
       this.say('iPadは捨てられない（壁に向けて左クリックで戻す）', 'info');
       return;
@@ -1648,7 +1725,7 @@ export class Game {
   // 実行せずに「できるか」を知るため、操作はクロージャとして返す（ハイライトにも使う）
   planInteract(target: Target): Action | null {
     const s = this.state;
-    if (s.phase !== 'playing') return null;
+    if (s.phase !== 'playing' || !this.reachable(target)) return null;
     const hand = s.hand;
 
     switch (target.kind) {
@@ -1683,6 +1760,15 @@ export class Game {
         if (s.moving && fridgeItemOf(target) === s.moving) return null; // 持ち上げ中の物は取れない
         return () => (s.hand = { kind: 'bottle', id: target.id });
 
+      case 'fridgeBag':
+        // 冷蔵庫の中のパック。取り出して、作業台のどこにでも置く
+        if (hand || !this.fridgeDoorOpenFor(target) || s.bags[target.id].at !== 'fridge') return null;
+        if (s.moving && fridgeItemOf(target) === s.moving) return null; // 持ち上げ中の物は取れない
+        return () => {
+          s.hand = { kind: 'packBag', id: target.id };
+          s.bags[target.id] = { at: 'hand' };
+        };
+
       case 'traySlot': {
         const spot = target.spot ?? 0;
         const here = trayAt(s, target.id, spot);
@@ -1696,7 +1782,7 @@ export class Game {
         }
         // 置いたものから1回分を取る：ほうれん草・チキン・パンチェッタ（トングで1掴み）、塩オイルソース・小エビ（お玉1杯）、ソテーソース（パック1つ）。
         // 置いた置き場からだけ取れる。置き直すときは右クリックで持ち上げる
-        if (!hand && here) {
+        if (!hand && here && !isCaseTray(here)) {
           return () => (s.hand = { kind: 'ingredient', id: TRAY_CONTENT[here] });
         }
         return null;
@@ -1745,6 +1831,15 @@ export class Game {
         }
         const restPlan = this.planRestPlace('left', target);
         if (restPlan) return restPlan.run;
+        // 手に持ったパックを、作業台の空いている所に置く
+        if (hand?.kind === 'packBag') {
+          const b = this.previewBag(target);
+          if (!b?.valid) return null;
+          return () => {
+            s.bags[hand.id] = { at: 'table', spot: { surface: b.surface, x: b.x, z: b.z } };
+            s.hand = null;
+          };
+        }
         const p = this.previewPlacement(target);
         if (!p?.valid) return null;
         return () => {
@@ -2281,6 +2376,8 @@ export function describeItem(item: Item | null): string {
       return TRAY_NAME[item.id];
     case 'bottle':
       return `${INGREDIENTS[item.id].name}（ボトル）`;
+    case 'packBag':
+      return `${FRIDGE_ITEM_NAME[BAG_FRIDGE_ITEM_OF(item.id)]}の袋`;
     case 'ipad':
       return 'iPad';
     case 'geta':

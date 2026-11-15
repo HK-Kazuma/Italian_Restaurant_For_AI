@@ -24,7 +24,7 @@ const smallStack: Target = { kind: 'plateStack', style: 'small' };
 const bowlStack: Target = { kind: 'plateStack', style: 'bowl' };
 const rimStack: Target = { kind: 'plateStack', style: 'rim' };
 const fridgeDoor: Target = { kind: 'fridgeDoor' };
-const fridgeDoor2: Target = { kind: 'fridgeDoor', unit: 1 }; // 右側の冷蔵庫
+const fridgeDoor2: Target = { kind: 'fridgeDoor', unit: 2 }; // 3台目の冷蔵庫（イカ・きのこ・わかめ・野菜ペースト・ガルムソース・ホワイトソース・イカ墨ソースは、2台目をクックの具材に譲って、ここに入っている）
 const stock = (id: Extract<Target, { kind: 'stock' }>['id']): Target => ({ kind: 'stock', id });
 const fridgeStock = (id: Extract<Target, { kind: 'stock' }>['id']): Target => ({ kind: 'stock', id, inFridge: true });
 const bottle = (id: Extract<Target, { kind: 'bottle' }>['id']): Target => ({ kind: 'bottle', id });

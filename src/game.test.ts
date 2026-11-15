@@ -48,7 +48,7 @@ function gameWithTicket(menuId: string) {
 
 // 冷蔵庫のトレー・ケースを取って、トッピングの置き場（spot 番目）に置く
 function putTopping(g: Game, id: TrayId, spot = 0) {
-  if (id === 'mushroom' && !g.state.fridgeOpen[1]) g.rightClick({ kind: 'fridgeDoor', unit: 1 }); // きのこは右側の冷蔵庫
+  if (id === 'mushroom' && !g.state.fridgeOpen[2]) g.rightClick({ kind: 'fridgeDoor', unit: 2 }); // きのこは3台目の冷蔵庫
   g.interact(fridgeTray(id));
   g.interact(toppingSlot(spot));
 }
@@ -1268,7 +1268,7 @@ describe('Game: トレー置き場（ほうれん草以外の、塩オイルソ�
     for (const [tray, content] of TOPPINGS) {
       for (const spot of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]) {
         const g = newGame();
-        g.rightClick({ kind: 'fridgeDoor', unit: 1 }); // きのこは右側の冷蔵庫
+        g.rightClick({ kind: 'fridgeDoor', unit: 2 }); // きのこは3台目の冷蔵庫
         g.interact(fridgeTray(tray));
         expect(g.state.hand).toEqual({ kind: 'tray', id: tray });
         expect(g.state.trays[tray]).toBe('hand');
@@ -1500,11 +1500,11 @@ describe('Game: 冷蔵庫の中の物を、右クリックで持ち上げて置�
     const door2: Target = { kind: 'fridgeDoor', unit: 1 };
     const shelf2 = (shelf: 0 | 1 | 2 | 3, x: number, z: number): Target => ({ kind: 'fridgeShelf', unit: 1, shelf, x, z });
 
-    it('3台目の冷蔵庫は最初は空で、扉は別々に開け閉めでき、ほかの冷蔵庫の物を置き直せる', () => {
+    it('3台目の冷蔵庫は、2台目に入りきらないパック3つと、イカ・きのこなど7つが入っていて、扉は別々に開け閉めでき、ほかの冷蔵庫の物を置き直せる', () => {
       const g = newGame(); // 1台目は開けてある
       const door3: Target = { kind: 'fridgeDoor', unit: 2 };
       const shelf3 = (shelf: 0 | 1 | 2 | 3, x: number, z: number): Target => ({ kind: 'fridgeShelf', unit: 2, shelf, x, z });
-      expect(Object.values(g.state.fridgeItems).filter((s) => s.unit === 2)).toHaveLength(0);
+      expect(Object.values(g.state.fridgeItems).filter((s) => s.unit === 2)).toHaveLength(10);
       g.rightClick(door3);
       expect(g.state.fridgeOpen).toEqual([true, false, true]);
       const can: Target = { kind: 'stock', id: 'meatSauce', inFridge: true };
@@ -1515,11 +1515,21 @@ describe('Game: 冷蔵庫の中の物を、右クリックで持ち上げて置�
       expect(g.state.fridgeOpen).toEqual([true, false, false]);
     });
 
-    it('最初は、イカ・きのこ・わかめ・野菜ペースト・ガルムソース・ホワイトソース缶・イカ墨ソースだけが入っていて、扉は1台目と別々に開け閉めできる', () => {
+    it('最初は、クックの具材のケース14個とパック2つが入っていて（横4列まで）、扉は1台目と別々に開け閉めできる', () => {
       const g = newGame(); // 1台目は開けてある
       expect(g.state.fridgeOpen).toEqual([true, false, false]);
       const inSecond = Object.entries(g.state.fridgeItems).filter(([, s]) => s.unit === 1).map(([id]) => id).sort();
-      expect(inSecond).toEqual(['garumBottle', 'mushroomTray', 'squid', 'squidInkSauce', 'vegPasteCase', 'wakameTray', 'whiteSauce']);
+      expect(inSecond).toEqual(
+        ['bagPopcornShrimp', 'bagSpicyChicken', 'cCheeseSauceCupCase', 'cChickenCase', 'cCornCase', 'cDemiglaceCase', 'cFocacciaCase', 'cPattyCase', 'cPotatoCase', 'cTarakoCase', 'cVegPasteCase', 'pCheeseCase', 'pCornCase', 'pSauceCase', 'pSausageCase', 'pVegMushroomCase'],
+      );
+      // 3台目：入りきらないパック3つと、イカ・きのこ・わかめ・野菜ペースト・ガルムソース・ホワイトソース缶・イカ墨ソース
+      const inThird = Object.entries(g.state.fridgeItems).filter(([, s]) => s.unit === 2).map(([id]) => id).sort();
+      expect(inThird).toEqual(['bagChorizo', 'bagMozzarella', 'bagPotato', 'garumBottle', 'mushroomTray', 'squid', 'squidInkSauce', 'vegPasteCase', 'wakameTray', 'whiteSauce']);
+      // 2台目は、どの棚も横4列まで
+      for (const shelf of [0, 1, 2, 3]) {
+        const n = Object.values(g.state.fridgeItems).filter((s) => s.unit === 1 && s.shelf === shelf).length;
+        expect(n).toBeLessThanOrEqual(4);
+      }
       g.rightClick(door2);
       expect(g.state.fridgeOpen).toEqual([true, true, false]);
       g.rightClick(fridgeShelf(1, 0, 0)); // 棚板の unit 省略 = 1台目

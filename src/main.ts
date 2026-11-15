@@ -11,11 +11,11 @@ import { loadTutorialCleared, saveTutorialCleared } from './mission';
 import { rankingBoard } from './position';
 import { createKitchen } from './scene';
 import { loadSettings, lookScale, saveSettings } from './settings';
-import { TRAY_ZONE, isFreeTray, trayContentName } from './tray';
+import { TRAY_ZONE, isCaseTray, isFreeTray, trayContentName } from './tray';
 import type { Target } from './types';
 import './style.css';
 
-const cfg = PLAY_CONFIG; // 本番の設定（熱い器はやっとこでつかむ。トライアルは difficulty.ts でオフ）
+const cfg = { ...PLAY_CONFIG, fridgeCookSetup: true }; // 本番の設定（熱い器はやっとこでつかむ。トライアルは difficulty.ts でオフ）
 const BEST_KEY = 'kitchen-time-attack:best';
 
 function loadBest(): number {
@@ -154,11 +154,19 @@ function hintFor(target: Target | null): string {
       if (target.id !== TRAY_ZONE[hand.id]) return 'この置き場には置けない（種類が違う）';
       return game.trayAtSlot(target) ? 'この置き場は使用中（緑の印の空いている置き場に置く）' : '左クリック：ここに置く';
     }
-    return 'サラダ台の緑の印（矢印の先）に置く';
+    return isCaseTray(hand.id) ? '作業台の緑の印（トレー置き場。矢印の先）に置く' : 'サラダ台の緑の印（矢印の先）に置く';
+  }
+  if (hand?.kind === 'packBag') {
+    // 冷蔵庫から取ったパック：作業台の空いている所に置く
+    const p = game.previewBag(target);
+    if (p?.valid) return '左クリック：ここに置く';
+    if (p?.reason === 'surface') return 'パックは作業台にだけ置ける';
+    if (p) return 'ここには置けない（トレー置き場・作業枠・ほかの物に近すぎる）';
+    return '作業台の空いている所に視点を合わせて、左クリックで置く';
   }
   // 置いたトレー・ケース：左クリックで中身を取る、右クリックで持ち上げて置き直す
   const placedTray = !hand ? game.placedTrayOf(target) : null;
-  if (placedTray) return `左クリック：${trayContentName(placedTray)}を取る　右クリック：持ち上げて、置き直す`;
+  if (placedTray && !isCaseTray(placedTray)) return `左クリック：${trayContentName(placedTray)}を取る　右クリック：持ち上げて、置き直す`;
   const stock = game.stockHint(target);
   if (stock) return stock;
   const geta = game.getaHint(target);
@@ -275,7 +283,7 @@ function frame(): void {
   player.applyTo(camera);
   if (game.state.phase === 'playing' && !game.state.ipadOpen) interactor.update(game);
   else interactor.clear();
-  kitchen.sync(game.state, dt, game.previewPlacement(interactor.current), game.previewFridge(interactor.current), interactor.current, game.previewOven(interactor.current), game.previewGeta(interactor.current), game.previewProp(interactor.current), game.previewTool(interactor.current), game.previewRest('left', interactor.current) ?? game.previewRest('tongs', interactor.current));
+  kitchen.sync(game.state, dt, game.previewPlacement(interactor.current), game.previewFridge(interactor.current), interactor.current, game.previewOven(interactor.current), game.previewGeta(interactor.current), game.previewProp(interactor.current), game.previewTool(interactor.current), game.previewRest('left', interactor.current) ?? game.previewRest('tongs', interactor.current) ?? game.previewBag(interactor.current));
   const tutorial = tutorialGuide();
   // 十字の下の案内：左クリック（ほか）の案内と、F（道具の手）の案内を2行で出す
   const toolHint = game.state.phase === 'playing' ? game.toolHint(interactor.current) : '';

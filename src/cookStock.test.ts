@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { BAKE_TABLE, PREP_TABLE, bakedMenus, bakeSummary, dishName, servableDish, serveHint, tableProblems, vesselCapacity, type BakeDish } from './bake';
 import { DEFAULT_CONFIG as cfg } from './config';
-import { COOK_BINS, COOK_BIN_IDS, FROZEN_BAGS, FROZEN_BAG_IDS, PREP_STOCKS, addToStack, binLabel, binLow, pourInto, takeFromBin } from './cookStock';
+import { BAG_IDS, COOK_BINS, COOK_BIN_IDS, FROZEN_BAGS, FROZEN_BAG_IDS, PREP_STOCKS, addToStack, binLabel, binLow, pourInto, takeFromBin } from './cookStock';
 import { configFor } from './difficulty';
 import { Game, describeItem } from './game';
-import { COOK_BIN, COOK_BIN_SPOTS, FROZEN_BAG_COUNT, FROZEN_BAG_ROW, FROZEN_SHELF, FROZEN_SHELF_SPAN, OVEN_COUNTER, OVEN_COUNTER_ROW, OVEN_COUNTER_ZS, PREP_FIXTURES, ROOM_MIN_X, SHELF_PROPS, frozenBagOnCounter, frozenBagSpot } from './layout';
+import { CASE_SLOTS, COOK_BIN, COOK_BIN_SPOTS, FROZEN_BAG_COUNT, FROZEN_SHELF, FROZEN_SHELF_SPAN, OVEN_COUNTER, OVEN_COUNTER_ROW, OVEN_COUNTER_ZS, PREP_FIXTURES, ROOM_MIN_X, SHELF_PROPS, TOOL_HOME, caseSlotSpot, frozenBagSpot } from './layout';
 import { bakeItem, frontS, laneOfOffset } from './oven';
+import { CASE_TRAY_IDS } from './tray';
 import type { Item, Target } from './types';
 
 // クック編設計書 4.5（C5）：冷凍の袋・重ねて持つ具・ポテトの下調理
@@ -371,18 +372,27 @@ describe('そのほかのストック（土台）', () => {
 });
 
 describe('置き場所', () => {
-  it('ストック容器は1台目と3台目の天板の上。作業台の置き物（PREP_FIXTURES）に登録され、天板に収まる', () => {
+  it('ストック容器のうち、卵と脂取りシートは吊り棚。ほかの9つは、作業台のトレー置き場（縦2×横7の14か所）の番号順の置き場所を持ち、作業台の置き物（PREP_FIXTURES）に登録されている', () => {
     for (const id of COOK_BIN_IDS) {
       const at = COOK_BIN_SPOTS[id];
-      if (at.y !== undefined) continue; // 棚に乗る容器（脂取りシート）は、天板の置き物ではない
-      expect([0, 2]).toContain(at.counter);
+      if (at.y !== undefined) continue; // 棚に乗る容器（卵・脂取りシート）は、天板の置き物ではない
+      expect(at.counter).toBe(CASE_SLOTS.counter);
       const x = at.xr;
       const z = OVEN_COUNTER_ZS[at.counter] - OVEN_COUNTER_ROW.z + at.zr;
-      expect(PREP_FIXTURES.some((p) => Math.abs(p.x - x) < 1e-9 && Math.abs(p.z - z) < 1e-9)).toBe(true);
-      expect(Math.abs(at.xr) + COOK_BIN.w / 2).toBeLessThanOrEqual(OVEN_COUNTER.width / 2);
-      expect(Math.abs(at.zr) + COOK_BIN.d / 2).toBeLessThanOrEqual(OVEN_COUNTER.depth / 2);
+      expect(PREP_FIXTURES.some((p) => Math.abs(p.x - x) < 1e-9 && Math.abs(p.z - z) < 1e-9), id).toBe(true);
+      expect(Math.abs(x) + COOK_BIN.w / 2).toBeLessThanOrEqual(OVEN_COUNTER.width / 2);
     }
-    expect(COOK_BIN_SPOTS.potato.counter).toBe(0);
+    expect(COOK_BIN_IDS.filter((id) => COOK_BIN_SPOTS[id].y !== undefined).sort()).toEqual(['egg', 'oilSheet']);
+    // トレー置き場は、縦2列（x）× 横7個（z）で、ケースと同じ大きさ
+    expect(CASE_SLOTS.rows * CASE_SLOTS.cols).toBe(14);
+    for (let i = 0; i < 14; i++) {
+      const a = caseSlotSpot(i);
+      expect(a.xr).toBe(CASE_SLOTS.xr[Math.floor(i / 7)]);
+      for (let j = i + 1; j < 14; j++) {
+        const b = caseSlotSpot(j);
+        expect(Math.abs(a.xr - b.xr) >= COOK_BIN.w - 1e-9 || Math.abs(a.zr - b.zr) >= COOK_BIN.d - 1e-9, `${i} と ${j}`).toBe(true);
+      }
+    }
   });
 
   it('ストック容器の上には、お皿・鉄板を置けない', () => {
@@ -416,16 +426,53 @@ describe('置き場所', () => {
     expect(OVEN_COUNTER_ZS[oil.counter] + oil.zr).toBeCloseTo(spots[2].z);
   });
 
-  it('冷凍の袋4つは、2台目の具材台の壁寄りの縁に並び、作業台の置き物に登録されている', () => {
-    for (let i = 0; i < FROZEN_BAG_COUNT; i++) {
-      const at = frozenBagOnCounter(i, FROZEN_BAG_COUNT);
-      const z = OVEN_COUNTER_ZS[FROZEN_BAG_ROW.counter] - OVEN_COUNTER_ROW.z + at.zr;
-      expect(PREP_FIXTURES.some((p) => Math.abs(p.x - at.xr) < 1e-9 && Math.abs(p.z - z) < 1e-9)).toBe(true);
-      expect(Math.abs(at.zr) + FROZEN_SHELF.bag.w / 2).toBeLessThanOrEqual(OVEN_COUNTER.depth / 2);
-      expect(at.xr - FROZEN_SHELF.bag.d / 2).toBeGreaterThanOrEqual(-OVEN_COUNTER.width / 2);
+  it('パック5つ（冷凍の袋4つ + モッツァレラ）の最初の置き場所は作業台の上で、作業台の置き物に重ならず、たがいに重ならない', () => {
+    expect(FROZEN_BAG_IDS).toHaveLength(FROZEN_BAG_COUNT - 1);
+    const g = cookGame();
+    const spots = BAG_IDS.map((id) => {
+      const place = g.state.bags[id];
+      expect(place.at, id).toBe('table');
+      return (place as { at: 'table'; spot: { surface: string; x: number; z: number } }).spot;
+    });
+    for (const [i, a] of spots.entries()) {
+      expect(a.surface).toBe('prep');
+      expect(PREP_FIXTURES.some((p) => Math.abs(p.x - a.x) < p.hx + FROZEN_SHELF.bag.d / 2 && Math.abs(p.z - a.z) < p.hz + FROZEN_SHELF.bag.w / 2), `パック${i}`).toBe(false);
+      for (const b of spots.slice(i + 1)) expect(Math.abs(a.z - b.z)).toBeGreaterThan(FROZEN_SHELF.bag.w);
     }
-    expect(FROZEN_BAG_IDS).toHaveLength(FROZEN_BAG_COUNT);
-    const zs = FROZEN_BAG_IDS.map((_, i) => frozenBagOnCounter(i, FROZEN_BAG_COUNT).zr);
-    for (let i = 1; i < zs.length; i++) expect(zs[i] - zs[i - 1]).toBeGreaterThan(FROZEN_SHELF.bag.w); // 重ならない
+  });
+
+  it('本番（fridgeCookSetup）では、ケース14個とパック5つは冷蔵庫の中。やっとこ・ヘラは作業台の上（オーブン側の端）', () => {
+    const g = new Game({ ...cfg, fridgeCookSetup: true }, () => 0);
+    g.start('leading', 'cook');
+    g.state.nextTicketAt = Infinity;
+    for (const id of CASE_TRAY_IDS) expect(g.state.trays[id], id).toBe('fridge');
+    for (const id of BAG_IDS) expect(g.state.bags[id].at, id).toBe('fridge');
+    expect(g.state.toolSpots).toEqual({ tongs: TOOL_HOME.tongs, spatula: TOOL_HOME.spatula });
+    // 冷蔵庫の外のケースは使えない（取り出して、トレー置き場に置く）
+    expect(g.planInteract({ kind: 'cookBin', id: 'potato' })).toBeNull();
+    expect(g.planInteract({ kind: 'frozenBag', id: 'chorizo' })).toBeNull();
+    // 冷蔵庫（2台目）から取って、トレー置き場に置くと使える
+    g.rightClick({ kind: 'fridgeDoor', unit: 1 });
+    g.interact({ kind: 'fridgeTray', id: 'cPotato' });
+    expect(g.state.hand).toEqual({ kind: 'tray', id: 'cPotato' });
+    g.interact({ kind: 'traySlot', id: 'cook', spot: 3 });
+    expect(g.state.trays.cPotato).toBe('table');
+    expect(g.state.traySpot.cPotato).toBe(3);
+    expect(g.planInteract({ kind: 'cookBin', id: 'potato' })).not.toBeNull();
+    // パックは、作業台のどこにでも置ける
+    g.interact({ kind: 'fridgeBag', id: 'spicyChicken' });
+    expect(g.state.hand).toEqual({ kind: 'packBag', id: 'spicyChicken' });
+    const at: Target = { kind: 'tableTop', surface: 'prep', x: 0, z: 0.9 };
+    expect(g.previewBag(at)?.valid).toBe(true);
+    g.interact(at);
+    expect(g.state.hand).toBeNull();
+    expect(g.state.bags.spicyChicken).toMatchObject({ at: 'table' });
+    expect(g.planInteract({ kind: 'frozenBag', id: 'spicyChicken' })).not.toBeNull();
+    // 右クリックで持ち上げて、置き直せる
+    g.rightClick({ kind: 'frozenBag', id: 'spicyChicken' });
+    expect(g.state.hand).toEqual({ kind: 'packBag', id: 'spicyChicken' });
+    // トレー置き場の上には置けない
+    const slotAt = caseSlotSpot(0);
+    expect(g.previewBag({ kind: 'tableTop', surface: 'prep', x: slotAt.xr, z: OVEN_COUNTER_ZS[0] - OVEN_COUNTER_ROW.z + slotAt.zr })?.valid).toBe(false);
   });
 });

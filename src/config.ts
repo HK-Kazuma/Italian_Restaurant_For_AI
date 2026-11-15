@@ -44,6 +44,7 @@ export type GameConfig = {
   maxBakeFinishes: number; // 焼き物（受け台に乗せた器）に振る・かける仕上げの回数の上限（振りすぎは注文ミス。上限は、押し続けたときに際限なく増えないためだけ）
 
   // 道具の手（クック編 C4）
+  fridgeCookSetup: boolean; // クックの最初の状態。true = 具材のケース・パックは冷蔵庫の中、やっとこ・ヘラは作業台の上（本番）。false = ケースは作業台のトレー置き場、パックは作業台の上、道具はフック（既存のテスト・チュートリアル）
   hotHandling: boolean; // 熱い器（一度でもオーブンを通った器）を素手（左クリック）で取れない。やっとこ（F）でつかむ。トライアルは difficulty.ts でオフ
   sizzleSeconds: number; // 焼けた鉄板（油のはねる器）を出口から取ってから、油のはねる粒を出す秒数（見た目だけ。クック編 C7）
 
@@ -109,6 +110,7 @@ export const DEFAULT_CONFIG: GameConfig = {
   prepStockConsume: true,
   prepStockLowAt: 4, // 仮
 
+  fridgeCookSetup: false, // 既存のテストは、ケースが作業台にある状態から始まる。本番（main.ts）はオン
   hotHandling: false, // 既存のテストは素手で出口の皿を取るため、標準はオフ。本番（main.ts）は PLAY_CONFIG でオン
   sizzleSeconds: 5, // クック編設計書 4.7
 

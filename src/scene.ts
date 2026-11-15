@@ -2,18 +2,19 @@ import * as THREE from 'three';
 import type { GameConfig } from './config';
 import { INGREDIENTS } from './ingredients';
 import { BOTTLE_FRIDGE_ITEM, BOTTLE_IDS, bottleOfFridgeItem } from './bottle';
-import { BAKE_DISHES, BOARD, COOK_BIN, COOK_BIN_SPOTS, FROZEN_BAG_ROW, SHELF_ORIGIN, FROZEN_SHELF, FROZEN_SHELF_SPAN, SHELF_PROPS, frozenBagOnCounter, frozenBagSpot, COOK_SIDE_STACKS, DEV_PIZZA_SHELF, FREE_TRAY_HOME, GETA, HOT_WATER_COUNTER, LAYOUT, LEFT_COUNTER, OVEN, OVEN_BELT, OVEN_COUNTER, OVEN_COUNTER_ROW, OVEN_COUNTER_SHELF, OVEN_COUNTER_ZS, OVEN_STOCK_NAME, OVEN_Z, PIZZA_COUNTER, PIZZA_PLATE_R, PIZZA_PLATE_STACK, PIZZA_TOP_TUBS, ROOM_MIN_X, SERVE_PASS, SHELF_STACKS, SURFACES, REST_DISH, TOOL_HOOKS, TOOL_REST, WALL_HALF, WORK_FRAMES, shelfStackSpot, type Layout } from './layout';
+import { BAKE_DISHES, BOARD, COOK_BIN, COOK_BIN_SPOTS, CASE_SLOTS, CASE_SLOT_COUNT, SHELF_ORIGIN, caseSlotSpot, FROZEN_SHELF, FROZEN_SHELF_SPAN, SHELF_PROPS, frozenBagSpot, COOK_SIDE_STACKS, DEV_PIZZA_SHELF, FREE_TRAY_HOME, GETA, HOT_WATER_COUNTER, LAYOUT, LEFT_COUNTER, OVEN, OVEN_BELT, OVEN_COUNTER, OVEN_COUNTER_ROW, OVEN_COUNTER_SHELF, OVEN_COUNTER_ZS, OVEN_STOCK_NAME, OVEN_Z, PIZZA_COUNTER, PIZZA_PLATE_R, PIZZA_PLATE_STACK, PIZZA_TOP_TUBS, ROOM_MIN_X, SERVE_PASS, SHELF_STACKS, SURFACES, REST_DISH, TOOL_HOOKS, TOOL_REST, WALL_HALF, WORK_FRAMES, shelfStackSpot, type Layout } from './layout';
 import { PIZZA_TOP_IDS, PIZZA_TOPPING_NAME, isPizzaTop, mozzSpots, pizzaName, pizzaOf, pizzaSignature } from './pizza';
 import { BAKE_STYLES, OVEN_DECKS, OVEN_DECK_NAME, bakeTime, beltSpeed, emergedCount, emergedLabel, isEmerged, laneOfOffset, ovenDishItem, remainingTime } from './oven';
 import { BAKE_VESSELS, CUP_FINISHES, FINISH_SPOT, defaultStock, finishLayout, isSizzling, loadLayout, progressSignature, unpouredCups, viewOf, type LoadSpot } from './bake';
-import { COOK_BINS, COOK_BIN_IDS, FROZEN_BAGS, FROZEN_BAG_IDS, bagDisplayName, binLabel, binLow } from './cookStock';
+import { BAG_IDS, COOK_BINS, COOK_BIN_IDS, FROZEN_BAGS, bagDisplayName, binLabel, binLow } from './cookStock';
 import { SAUCE_FILL_PER_UNIT, isNoodle } from './pot';
 import { plateLabel, potMonitor, potPopup } from './labels';
 import { Sizzle, Steam, type SteamOptions } from './steam';
 import { matchesTarget, type GuideAt } from './tutorial';
 import { type Rect, type World, rectAt } from './world';
-import { FRIDGE_ITEM_IDS, FRIDGE_ITEM_NAME, FRIDGE_ITEM_SIZE, FRIDGE_SHELF_Y } from './fridge';
-import { FREE_TRAY_IDS, TRAY_FRIDGE_ITEM, TRAY_IDS, TRAY_SPOT_COUNT, TRAY_ZONE, TRAY_ZONE_NAME, freeTraySpots, isFreeTray, trayAt, trayContentName, trayOfFridgeItem } from './tray';
+import { BAG_FRIDGE_ITEM, FRIDGE_ITEM_IDS, FRIDGE_ITEM_NAME, FRIDGE_ITEM_SIZE, FRIDGE_SHELF_Y, bagOfFridgeItem } from './fridge';
+import { CASE_TARGET, CASE_TRAY_IDS, FREE_TRAY_IDS, TRAY_FRIDGE_ITEM, TRAY_IDS, TRAY_SPOT_COUNT, TRAY_ZONE, TRAY_ZONE_NAME, freeTraySpots, isFreeTray, trayAt, trayContentName, trayOfFridgeItem } from './tray';
+import type { BagId } from './types';
 import type { BakeFinishId, BakeLoad, BakeLoadId, CookBinId, CupFill, FrozenBagId, BakeState, BakeStyle, Boiler, BottleId, FreeTrayId, FridgeBottleId, FridgeItemId, FridgePreview, FridgeShelf, FridgeUnit, NoodleKind, OvenDeck, TrayId, TrayZone, BottlePreview, GetaPreview, OvenPreview, GameState, IngredientId, Item, PizzaBuild, PizzaTop, PizzaTopping, PlateDish, PropPreview, Pot, SurfaceId, Target, RestPreview, ToolId, ToolPreview } from './types';
 
 // 厨房の3Dシーン。見た目はすべてプリミティブ（箱・円柱）で作るローポリのプレースホルダー。
@@ -775,7 +776,20 @@ function buildPasteCase(): THREE.Group {
   return g;
 }
 
+// クックの具材のケース（冷蔵庫の中・手に持ったとき。作業台に置いたものは、それぞれの対象（cookBin / pizzaSource）の見た目）
+function buildCaseModel(id: Extract<TrayId, (typeof CASE_TRAY_IDS)[number]>): THREE.Group {
+  const t = CASE_TARGET[id];
+  if (t.kind === 'cookBin') {
+    const { group, fillTop } = buildSteelTub(COOK_BIN.w, COOK_BIN.d, COOK_BIN.h, BIN_FILL[t.id]);
+    group.add(buildCookBinContents(t.id, BIN_PIECES_SHOWN, fillTop));
+    return group;
+  }
+  const pid = (t as { id: PizzaTopping }).id;
+  return pid === 'sauce' ? buildPizzaSauceTub() : pid === 'cheese' ? buildPizzaCheeseTub() : buildPizzaTopTub(pid as PizzaTop);
+}
+
 function buildTray(id: TrayId): THREE.Group {
+  if ((CASE_TRAY_IDS as readonly string[]).includes(id)) return buildCaseModel(id as Extract<TrayId, (typeof CASE_TRAY_IDS)[number]>);
   switch (id) {
     case 'vegPaste':
       return buildPasteCase();
@@ -790,7 +804,7 @@ function buildTray(id: TrayId): THREE.Group {
     case 'chili':
       return buildSteelBin(id); // ステンレスの丸い容器に山盛り
     default:
-      return buildFoodPan(id); // 小エビ・チキン・パンチェッタ：ステンレスのバットに山盛り
+      return buildFoodPan(id as 'shrimp' | 'chicken' | 'pancetta' | 'mushroom' | 'wakame'); // 小エビ・チキン・パンチェッタ：ステンレスのバットに山盛り
   }
 }
 
@@ -2451,6 +2465,14 @@ function buildItemMesh(item: Item): THREE.Group {
     case 'bakePlate':
       g.add(buildBakePlate(item));
       break;
+    case 'packBag': {
+      // 冷蔵庫から取ったパック（冷凍の袋・モッツァレラの袋）。手の上では横に寝かせて小さく
+      const bag = item.id === 'mozzarella' ? buildMozzBag() : buildFrozenBag(item.id);
+      bag.rotation.y = -Math.PI / 2;
+      bag.scale.setScalar(0.8);
+      g.add(bag);
+      break;
+    }
     case 'frozenBag': {
       // 袋ごと持った冷凍の袋（入れるたびに中身が減る）。手の上では横に寝かせて小さく
       const bag = buildFrozenBag(item.id, item.left / (FROZEN_BAGS[item.id].whole ?? 1));
@@ -2607,6 +2629,8 @@ function itemSignature(item: Item | null): string {
       return `lstack:${item.id}:${item.count}`;
     case 'frozenBag':
       return `fbag:${item.id}:${item.left}`;
+    case 'packBag':
+      return `pbag:${item.id}`;
     case 'sauceCup':
       return `scup:${item.fill}`;
     case 'sauceLadle':
@@ -3332,22 +3356,23 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
       scene.add(box(FROZEN_SHELF.depth * 0.8, 0.12, 0.02, 0xa9aeb2, FROZEN_SHELF_SPAN.x - FROZEN_SHELF.depth * 0.1, FROZEN_SHELF.y - FROZEN_SHELF.thickness - 0.06, midZ + k * span)); // 支え
     }
   }
-  // 冷凍の袋（2台目の具材台の壁寄りの縁。layout.ts の FROZEN_BAG_ROW）
-  {
-    FROZEN_BAG_IDS.forEach((id, i) => {
-      const at = frozenBagOnCounter(i, FROZEN_BAG_IDS.length);
-      const bag = buildFrozenBag(id);
-      bag.position.set(OVEN_COUNTER.x + at.xr, 0.9, OVEN_COUNTER_ZS[FROZEN_BAG_ROW.counter] + at.zr);
-      setTarget(bag, { kind: 'frozenBag', id });
-      scene.add(bag);
-      interactables.push(bag);
-      // 袋ごとの名前（視点を合わせたときだけ）
-      gateHover(decor(bagDisplayName(id), OVEN_COUNTER.x + at.xr, 0.9 + FROZEN_SHELF.bag.h + 0.1, OVEN_COUNTER_ZS[FROZEN_BAG_ROW.counter] + at.zr, 0.5), { kind: 'frozenBag', id });
-    });
+  // パック（冷凍の袋4種類とモッツァレラの袋）：冷蔵庫から取って、作業台の空いている所に置く（state.bags）。置いた間だけ見せる。名前は、視点を合わせたときだけ
+  const bagViews = new Map<BagId, { group: THREE.Group; label: Label }>();
+  for (const id of BAG_IDS) {
+    const bag = id === 'mozzarella' ? buildMozzBag() : buildFrozenBag(id);
+    const target: Target = id === 'mozzarella' ? { kind: 'pizzaSource', id: 'mozzarella' } : { kind: 'frozenBag', id };
+    setTarget(bag, target);
+    bag.visible = false;
+    scene.add(bag);
+    interactables.push(bag);
+    const label = gateHover(decor(id === 'mozzarella' ? 'モッツァレラチーズ' : bagDisplayName(id), 0, 1.3, 0, 0.5), target);
+    bagViews.set(id, { group: bag, label });
   }
 
   // 具材台の天板のストック容器（layout.ts の COOK_BIN_SPOTS）。数に限りのある容器（ポテト）は、残りの数をラベルに出し、少ないと色を変える
   const binViews: { id: CookBinId; items: THREE.Group; fillTop: number; label: Label; shown: number }[] = [];
+  // 作業台のトレー置き場に置くケース（冷蔵庫から出したときだけ見える）。位置は state.traySpot の置き場
+  const caseViews: { tray: (typeof CASE_TRAY_IDS)[number]; group: THREE.Group; label: Label }[] = [];
   for (const id of COOK_BIN_IDS) {
     const at = COOK_BIN_SPOTS[id];
     const { group, fillTop } = buildSteelTub(COOK_BIN.w, COOK_BIN.d, COOK_BIN.h, BIN_FILL[id]);
@@ -3362,6 +3387,8 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
     interactables.push(group);
     const label = gateHover(decor(COOK_BINS[id].name, x, baseY + 0.23, z, 0.42), { kind: 'cookBin', id });
     binViews.push({ id, items, fillTop, label, shown: -1 });
+    const tray = CASE_TRAY_IDS.find((c) => CASE_TARGET[c].kind === 'cookBin' && (CASE_TARGET[c] as { id: string }).id === id);
+    if (tray) caseViews.push({ tray, group, label });
   }
 
   // ピザの置き場（2台目の具材台の天板）：ピザ生地・ピザの鉄板のスタック、ピザソース（正方形の容器）・ピザチーズ（長方形で奥側に長い容器）・モッツァレラチーズ（上が空いたプラスチックの容器）、
@@ -3374,7 +3401,11 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
     scene.add(group);
     interactables.push(group);
     const l = decor(label, at.x, labelY, at.z, labelW);
-    return target.kind === 'pizzaPlateStack' ? l : gateHover(l, target);
+    const gated = target.kind === 'pizzaPlateStack' ? l : gateHover(l, target);
+    // ピザの具のケース：作業台のトレー置き場に置いたときだけ見える
+    const tray = CASE_TRAY_IDS.find((c) => CASE_TARGET[c].kind === target.kind && (CASE_TARGET[c] as { id: unknown }).id === (target as { id?: unknown }).id);
+    if (tray && target.kind === 'pizzaSource') caseViews.push({ tray, group, label: gated });
+    return gated;
   };
   // ピザ生地のスタック
   const doughStack = new THREE.Group();
@@ -3424,7 +3455,6 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
   // 容器：ソース（正方形）、チーズ（長方形・奥側に長い）、モッツァレラ（プラスチック）
   addPizzaProp(buildPizzaSauceTub(), pizzaAt(PIZZA_COUNTER.sauce.xr, PIZZA_COUNTER.sauce.zr), { kind: 'pizzaSource', id: 'sauce' }, 'ピザソース', 1.1, 0.5);
   addPizzaProp(buildPizzaCheeseTub(), pizzaAt(PIZZA_COUNTER.cheese.xr, PIZZA_COUNTER.cheese.zr), { kind: 'pizzaSource', id: 'cheese' }, 'ピザチーズ', 1.1, 0.5);
-  addPizzaProp(buildMozzBag(), pizzaAt(PIZZA_COUNTER.mozz.xr, PIZZA_COUNTER.mozz.zr), { kind: 'pizzaSource', id: 'mozzarella' }, 'モッツァレラチーズ', 1.25, 0.6);
   // 4番目の具の容器（野菜ときのこ・ソーセージ・コーン）：モッツァレラの隣（layout.ts の PIZZA_TOP_TUBS）
   for (const id of PIZZA_TOP_IDS) {
     const t = PIZZA_TOP_TUBS.spots[id];
@@ -3598,6 +3628,15 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
     addFridgeItem(BOTTLE_FRIDGE_ITEM[id], bottle, { kind: 'fridgeBottle', id });
   }
 
+  // 冷蔵庫の中のパック（冷凍の袋4種類とモッツァレラ）。ラベルが扉側（-x）を向くよう、向きを回す
+  for (const id of BAG_IDS) {
+    const holder = new THREE.Group();
+    const bag = id === 'mozzarella' ? buildMozzBag() : buildFrozenBag(id);
+    bag.rotation.y = Math.PI;
+    holder.add(bag);
+    addFridgeItem(BAG_FRIDGE_ITEM[id], holder, { kind: 'fridgeBag', id });
+  }
+
   // 名前のラベル（位置は毎フレーム、物に付いてくる）
   const fridgeLabels = new Map<FridgeItemId, Label>();
   for (const id of FRIDGE_ITEM_IDS) fridgeLabels.set(id, decorIn(fridgeSpot, FRIDGE_ITEM_NAME[id], 0.02, 1, 0, 0.4));
@@ -3674,38 +3713,45 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
   const trayGuides = new Map<string, { zone: TrayZone; spot: number; group: THREE.Group; pad: THREE.Mesh; arrow: THREE.Group }>();
   const traySlots = new Map<string, THREE.Group>();
   // 名前の高さ：具材コーナーの隣の具材（ガーリックなど）と同じ高さ（1.3m）にそろえる。ほうれん草のトレーだけ少し低い
-  const TRAY_LABEL_Y: Record<TrayZone, number> = { spinach: 1.2, topping: 1.3 };
+  const TRAY_LABEL_Y: Record<TrayZone, number> = { spinach: 1.2, topping: 1.3, cook: 1.15 };
   // 置き場の大きさ（x 方向 × z 方向）。小エビなどのバット（0.4 四方）が収まる大きさにしてある
   const TRAY_SLOT_SIZE: Record<TrayZone, { w: number; d: number }> = {
     spinach: { w: 0.34, d: 0.4 },
     topping: { w: 0.42, d: 0.42 },
+    cook: { w: COOK_BIN.w, d: COOK_BIN.d }, // クックの具材のケースと同じ大きさ
   };
   const trayLabels = new Map<string, Label>();
   const TRAY_COLUMNS = [0.07, 0.5]; // 縦2列の x（手前の列、奥の列）。幅 0.42 の置き場が、サラダを作る台（x=-0.45）と台の右端の間に収まる
   const TRAY_ROWS = [1.12, 0.56, 0, -0.56, -1.12]; // 横5個の z（台の奥行き 3.0m に均等。間隔 0.56）
-  const TRAY_SLOT_DEFS: [TrayZone, number, number, number][] = [
+  const TRAY_SLOT_DEFS: [TrayZone, number, number, number, THREE.Group?][] = [
     ['spinach', 0, SX_WORK, -1.1], // ほうれん草のトレー置き場
     // 縦2列（x: 手前の列 → 奥の列）× 横5個（z: 手前 → 奥に均等）。番号は、手前の列の手前から奥へ 0〜4、奥の列の手前から奥へ 5〜9
     ...TRAY_COLUMNS.flatMap((x, row) =>
       TRAY_ROWS.map((z, col): [TrayZone, number, number, number] => ['topping', row * TRAY_ROWS.length + col, x, z]),
     ),
+    // 作業台（クック側）のトレー置き場：縦2×横7の14か所（layout.ts の CASE_SLOTS）。作業台の中心からの相対位置
+    ...Array.from({ length: CASE_SLOT_COUNT }, (_, i): [TrayZone, number, number, number, THREE.Group] => {
+      const at = caseSlotSpot(i);
+      return ['cook', i, at.xr, OVEN_COUNTER_ZS[CASE_SLOTS.counter] - OVEN_COUNTER_ROW.z + at.zr, prepSpot];
+    }),
   ];
   for (const zone of Object.keys(TRAY_SPOT_COUNT) as TrayZone[]) {
     // 置き場の数が tray.ts と合っていないと、空きの判定とずれる
     if (TRAY_SLOT_DEFS.filter((d) => d[0] === zone).length !== TRAY_SPOT_COUNT[zone]) throw new Error(`トレー置き場の数が tray.ts と違う: ${zone}`);
   }
-  for (const [zone, spot, x, z] of TRAY_SLOT_DEFS) {
+  for (const [zone, spot, x, z, slotParent] of TRAY_SLOT_DEFS) {
+    const parent = slotParent ?? saladSpot;
     const key = `${zone}:${spot}`;
     const size = TRAY_SLOT_SIZE[zone];
     const slot = new THREE.Group();
     slot.add(box(size.w, 0.012, size.d, 0xcfc4ae, 0, 0.006, 0));
     slot.position.set(x, 0.9, z);
     setTarget(slot, { kind: 'traySlot', id: zone, spot });
-    saladSpot.add(slot);
+    parent.add(slot);
     interactables.push(slot);
-    trayViews.set(key, new ItemView(slot));
+    if (zone !== 'cook') trayViews.set(key, new ItemView(slot)); // クックのケースは、それぞれの対象（cookBin / pizzaSource）が見せる
     traySlots.set(key, slot);
-    trayLabels.set(key, decorIn(saladSpot, TRAY_ZONE_NAME[zone], x, TRAY_LABEL_Y[zone], z, 0.5));
+    if (zone !== 'cook') trayLabels.set(key, decorIn(saladSpot, TRAY_ZONE_NAME[zone], x, TRAY_LABEL_Y[zone], z, 0.5));
 
     const guide = new THREE.Group();
     guide.position.set(x, 0.9, z);
@@ -3726,7 +3772,7 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
     shaft.position.y = 0.3;
     arrow.add(head, shaft);
     guide.add(arrow);
-    saladSpot.add(guide);
+    parent.add(guide);
     trayGuides.set(key, { zone, spot, group: guide, pad, arrow });
   }
 
@@ -4118,6 +4164,7 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
     }
     restGhost.visible = restPreview !== null && restPreview.reason !== 'surface';
     if (restPreview) {
+      restGhost.scale.set(restPreview.size ? restPreview.size.w / REST_DISH.w : 1, 1, restPreview.size ? restPreview.size.d / REST_DISH.d : 1);
       const o = surfaceOrigin(restPreview.surface);
       restGhost.position.set(o.x + restPreview.x, 0.905, o.z + restPreview.z);
       (restGhost.material as THREE.MeshBasicMaterial).color.setHex(restPreview.valid ? 0x4cd964 : 0xe5484d);
@@ -4164,6 +4211,8 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
     const inFridge = (id: FridgeItemId) => {
       const tray = trayOfFridgeItem(id);
       if (tray) return state.trays[tray] === 'fridge';
+      const bag = bagOfFridgeItem(id);
+      if (bag) return state.bags[bag].at === 'fridge';
       const bottle = bottleOfFridgeItem(id);
       return bottle ? state.bottles[bottle] === null && !(state.hand?.kind === 'bottle' && state.hand.id === bottle) : true;
     };
@@ -4405,6 +4454,29 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
         else v.label.setText(`${Math.floor(pack.soak)}`, '#ffffff');
       }
     });
+
+    // 作業台のトレー置き場に置いたケース（冷蔵庫・手にある間は隠す）と、作業台に置いたパック
+    for (const v of caseViews) {
+      const on = state.trays[v.tray] === 'table';
+      v.group.visible = on;
+      if (on) {
+        const at = caseSlotSpot(state.traySpot[v.tray]);
+        const x = OVEN_COUNTER.x + at.xr;
+        const z = OVEN_COUNTER_ZS[CASE_SLOTS.counter] + at.zr;
+        v.group.position.set(x, 0.9, z);
+        v.label.sprite.position.set(x, 1.13, z);
+      }
+    }
+    for (const id of BAG_IDS) {
+      const v = bagViews.get(id)!;
+      const place = state.bags[id];
+      v.group.visible = place.at === 'table';
+      if (place.at === 'table') {
+        const o = surfaceOrigin(place.spot.surface);
+        v.group.position.set(o.x + place.spot.x, 0.9, o.z + place.spot.z);
+        v.label.sprite.position.set(o.x + place.spot.x, 0.9 + FROZEN_SHELF.bag.h + 0.1, o.z + place.spot.z);
+      }
+    }
 
     // トレー・ケース：冷蔵庫にあるか、サラダ台に置かれているか（手に持っている間はどちらにもない）。置いた1か所にだけ見せる。
     // 置いたあとは、置き場の名前ではなく、置いたものの名前を出す
