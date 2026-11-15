@@ -71,9 +71,34 @@ function runBelt(item: Dish, deck: OvenDeck, table: readonly BakeDish[] = TEST_T
 
 describe('表（BAKE_TABLE）の中身', () => {
   it('既存の2品が、同じ値で載っている（ドリア = 1段階・L、ピザ = 1段階・U）', () => {
+    // C3 の6品を有効化（2026-11-14）したため、表は8品。既存の2品の値は変わらず、6品は末尾に並ぶ
+    // C6 の9品（前菜4品・フォッカチオ5品）を登録（ステップH）したため、表は17品。9品はさらに末尾に並ぶ
     expect(BAKE_TABLE.map((d) => [d.id, d.vessel, d.stages.map((s) => s.need), d.finish.base])).toEqual([
       ['milanoDoria', 'doria', [cfg.ovenLowerTime / U], 'geta'],
       ['buffaloPizza', 'pizza', [1], 'pizzaPlate'],
+      ['cheeseMilanoDoria', 'doria', [2], 'geta'],
+      ['tarakoDoria', 'doria', [2], 'geta'],
+      ['tarakoGratin', 'doria', [2], 'geta'],
+      ['vegMushroomPizza', 'pizza', [1], 'pizzaPlate'],
+      ['sausagePizza', 'pizza', [1], 'pizzaPlate'],
+      ['cornPizza', 'pizza', [1], 'pizzaPlate'],
+      // --- C6（ステップH）---
+      ['popcornShrimp', 'bakingPad', [1], 'smallPlate'],
+      ['potatoGrill', 'doria', [1], 'geta'],
+      ['chorizo', 'doria', [1], 'geta'],
+      ['spicyChicken', 'doria', [2], 'geta'],
+      ['focaccia', 'bakingPad', [1], 'smallPlate'],
+      ['cinnamonFocaccia', 'bakingPad', [1], 'smallPlate'],
+      ['garlicFocaccia', 'bakingPad', [1], 'smallPlate'],
+      ['tarakoFocaccia', 'bakingPad', [1], 'smallPlate'],
+      ['cheeseFocaccia', 'bakingPad', [1], 'smallPlate'],
+      // --- C7（ステップJ）：C7 の6品登録による（2026-11-15 承認）。表は23品。6品はさらに末尾に並ぶ ---
+      ['hamburg', 'hamburgPan', [1, 1], 'board'],
+      ['italianHamburg', 'hamburgPan', [1, 1], 'board'],
+      ['diavolaHamburg', 'hamburgPan', [1, 1], 'board'],
+      ['mixedGrill', 'hamburgPan', [2], 'board'],
+      ['chickenDiavola', 'hamburgPan', [2, 1], 'board'],
+      ['chickenCheese', 'hamburgPan', [2, 1], 'board'],
     ]);
     expect(stageRange(BAKE_TABLE[1], 0).max).toEqual({ dough: 1, pizzaSauce: 1, pizzaCheese: 1, mozzarella: MOZZ_TOTAL });
   });

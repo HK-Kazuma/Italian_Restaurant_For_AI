@@ -48,7 +48,7 @@ describe('トレー・ケースの決まり', () => {
   it('塩オイルソース・小エビ・チキン・パンチェッタ・きのこ・ソテーソース・トマトソースは、同じトレー置き場（10か所）に置く', () => {
     for (const id of ['shrimp', 'chicken', 'pancetta', 'mushroom', 'sauteSauce', 'tomatoSauce', 'saltOil'] as const) expect(TRAY_ZONE[id]).toBe('topping');
     expect(TRAY_ZONE.spinach).toBe('spinach');
-    expect(TRAY_SPOT_COUNT).toEqual({ spinach: 1, topping: 10 });
+    expect(TRAY_SPOT_COUNT).toEqual({ spinach: 1, topping: 10, cook: 14 }); // cook = 作業台（クック側）のクックの具材のケース用（縦2×横7）
   });
 
   it('ガーリック・唐辛子の容器は置き場（区画）を持たず、台の上のどこにでも置ける', () => {

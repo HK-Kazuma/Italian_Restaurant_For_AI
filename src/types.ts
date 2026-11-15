@@ -29,16 +29,20 @@ export type IngredientId =
   | 'chicken'
   | 'dressing'
   | 'paprika'
-  | 'cornSoup';
+  | 'cornSoup'
+  // クック用のボトル（クック編 C6。作業台に置ける。決まりは bottle.ts）
+  | 'granMoravia' // グランモラビア（粉チーズの振り出し容器。焼く前のフォッカチオに振る）
+  | 'cinnamon' // シナモンパウダー（焼き上がったフォッカチオに振る）
+  | 'garlicSauce'; // ガーリックソース（焼き上がったフォッカチオにかける）
 
 // 手に持って、皿にかける・振るボトル。決まった台の上に自由に置ける（置ける台は bottle.ts）
-export type BottleId = Extract<IngredientId, 'dressing' | 'paprika' | 'garum' | 'parsley' | 'blackPepper'>;
+export type BottleId = Extract<IngredientId, 'dressing' | 'paprika' | 'garum' | 'parsley' | 'blackPepper' | 'granMoravia' | 'cinnamon' | 'garlicSauce'>;
 
 // 最初は冷蔵庫にしまってあるボトル（取り出してから、台の上に置く）
 export type FridgeBottleId = Extract<BottleId, 'dressing' | 'paprika' | 'garum'>;
 
-// 物を置ける台。salad = 右のサラダ台、left = IHの左の台、hotWater = 湯煎器の奥と右の台、prep = 作業台（オーブンの入口の先に並ぶ3台の具材台の天板。1つの面として扱う。ピザのお皿・鉄板だけが置ける）
-export type SurfaceId = 'salad' | 'left' | 'hotWater' | 'prep';
+// 物を置ける台。salad = 右のサラダ台、left = IHの左の台、hotWater = 湯煎器の奥と右の台、prep = 作業台（オーブンの入口の先に並ぶ3台の具材台の天板。1つの面として扱う。ピザのお皿・鉄板と、クック用のボトル（bottle.ts）だけが置ける）
+export type SurfaceId = 'salad' | 'left' | 'hotWater' | 'prep' | 'shelf'; // shelf = クック側の壁の吊り棚（高さ 1.45m。クック用のボトルを置ける）
 
 // 台の上の置き場所。台の中心からの相対位置（x: 右、z: 手前）
 export type TableSpot = { surface: SurfaceId; x: number; z: number };
@@ -80,13 +84,29 @@ export type TrayId =
   | 'sauteSauce'
   | 'tomatoSauce'
   | 'garlic'
-  | 'chili';
+  | 'chili'
+  // クックの具材のケース（作業台のトレー置き場に置く。クックの置き場 cook。作業台に置いたケースは、それぞれ cookBin / pizzaSource の対象になる）
+  | 'cPotato'
+  | 'cCorn'
+  | 'cPatty'
+  | 'cChicken'
+  | 'cFocaccia'
+  | 'cCheeseSauceCup'
+  | 'cDemiglace'
+  | 'cVegPaste'
+  | 'cTarako'
+  | 'pSauce'
+  | 'pCheese'
+  | 'pVegMushroom'
+  | 'pSausage'
+  | 'pCorn';
 
 // 台の上のどこにでも置ける容器（置き場の区画を持たないトレー・ケース）。置き場所は state.freeTraySpot
 export type FreeTrayId = Extract<TrayId, 'garlic' | 'chili'>;
 
 // トレー置き場の区画。spinach = ほうれん草のトレー専用の置き場、topping = ほうれん草以外のトレー・ケース（塩オイルソース・小エビ・チキン・パンチェッタ・きのこ・ソテーソース・トマトソース）のどれでも置ける置き場（縦2×横5の10か所）
-export type TrayZone = 'spinach' | 'topping';
+// cook = 作業台（クック側）の、クックの具材のケース用の置き場（縦2×横7の14か所）
+export type TrayZone = 'spinach' | 'topping' | 'cook';
 
 // 冷蔵庫の中の物（右クリックで持ち上げて、棚の好きな場所に置き直せる）。名前・大きさ・最初の置き場所は fridge.ts
 export type FridgeItemId =
@@ -112,7 +132,27 @@ export type FridgeItemId =
   | 'chiliBin'
   | 'dressingBottle'
   | 'paprikaBottle'
-  | 'garumBottle';
+  | 'garumBottle'
+  // クックの具材のケース14個（取って、作業台のトレー置き場に置く）と、パック5つ（冷凍の袋4種類とモッツァレラ。取って、作業台のどこにでも置ける）
+  | 'cPotatoCase'
+  | 'cCornCase'
+  | 'cPattyCase'
+  | 'cChickenCase'
+  | 'cFocacciaCase'
+  | 'cCheeseSauceCupCase'
+  | 'cDemiglaceCase'
+  | 'cVegPasteCase'
+  | 'cTarakoCase'
+  | 'pSauceCase'
+  | 'pCheeseCase'
+  | 'pVegMushroomCase'
+  | 'pSausageCase'
+  | 'pCornCase'
+  | 'bagSpicyChicken'
+  | 'bagPopcornShrimp'
+  | 'bagPotato'
+  | 'bagChorizo'
+  | 'bagMozzarella';
 
 // 冷蔵庫の棚の番号。0 = 最下段、1 = 下段、2 = 中段、3 = 上段
 export type FridgeShelf = 0 | 1 | 2 | 3;
@@ -200,20 +240,53 @@ export type BakeLoadId =
   | 'chicken' // チキン
   | 'shrimp' // ポップコーンシュリンプ（1つ）
   | 'potato' // 下調理したポテト（1個）
+  | 'frozenPotato' // 冷凍ポテト（袋の1/4。大きめの焼成パッド1つぶん。下調理で焼くと、ストックのポテトになる）
+  | 'spicyChicken' // 辛味チキン（1つ。冷凍の袋から取る）
   | 'corn' // コーン（1杯）
-  | 'sausage'; // ソーセージ（1本）
+  | 'sausage' // ソーセージ（1本）
+  | 'vegMushroom' // ピザの具：野菜ときのこ（レードル1杯）
+  | 'slicedSausage' // ピザの具：輪切りのソーセージ（レードル1杯。チョリソーの1本ずつのソーセージとは別の物）
+  // クック編 C6（前菜・フォッカチオ）
+  | 'focaccia' // フォッカチオ（1つ。ふつうの向き）
+  | 'focacciaFlipped' // 逆さまに入れたフォッカチオ（1つ。平らな面が上。手に持つのは focaccia で、作業枠のパッドに右クリックで入れるとこれになる）
+  | 'oilSheet' // 茶色の脂取りシート（1枚。辛味チキンの下に敷く）
+  | 'tarakoSauce' // たらこソース（1杯。クック用のストック容器から取る。ヒートの取り出し元とは別）
+  | 'halfCheese' // ピザチーズ（レードル1/2杯。ピザチーズの容器を右クリックで取る）
+  | 'granMoravia' // グランモラビア（ひと振り。ボトルを右クリックで振る）
+  | 'egg' // 卵（1個。目玉焼き鉄板に入れる。焼けると、ヘラで1つずつすくえる目玉焼きになる。クック編 C4 はすくう仕組み、C7 で目玉焼きの行が表に入る）
+  // クック編 C7（鉄板焼き）
+  | 'cheeseCup'; // チーズソースの小さい容器（ピザソースとピザチーズが入った物）。2回目に流す前の鉄板の空きにのせ、焼けたあと板の上でかける（bake.ts の CUP_FINISHES）
 // のせた物と数（省略・0 = のっていない）
 export type BakeLoad = Partial<Record<BakeLoadId, number>>;
 // 流す前に必要な手入れ。scrape = ヘラではがす
 export type BakeCare = 'scrape';
-// 焼いたあとの受け台。geta = 下駄（器ごと乗せる）、pizzaPlate = ピザのお皿（中身を移す）、board = 木の板（鉄板・スープ皿を器ごと乗せる）
-export type BakeBase = 'geta' | 'pizzaPlate' | 'board';
+// 焼いたあとの受け台。geta = 下駄（器ごと乗せる）、pizzaPlate = ピザのお皿（中身を移す）、board = 木の板（鉄板・スープ皿を器ごと乗せる）、
+// prepStock = 下調理のストック容器（中身を空ける。伝票には出ない。クック編 C5。bake.ts の PREP_TABLE）、
+// smallPlate = 小皿（中身を移す。作業枠に置いた小皿に、焼き上がった器から移す。クック編 C6。手に持つ物は bakePlate）
+// scoop = ヘラで1つずつすくって使う（目玉焼き。器に残したまま、ほかの品の仕上げにのせる。伝票には出ない。クック編 C7）
+export type BakeBase = 'geta' | 'pizzaPlate' | 'board' | 'prepStock' | 'smallPlate' | 'scoop';
+// チーズソースの小さい容器の中身（クック編 C7）。empty = 空、sauce = ピザソース入り、cheese = ピザソースとピザチーズ入り（鉄板にのせられる）。入れ方は cookStock.ts の CUP_FILLS
+export type CupFill = 'empty' | 'sauce' | 'cheese';
+
+// --- 冷凍の袋・ストック（クック編設計書 4.5 / C5。決まりは cookStock.ts の表）---
+// 具材台の上の壁の吊り棚に並ぶ、冷凍の袋（なくならない）。辛味チキン・ポップコーンシュリンプ・ポテト・チョリソー
+export type FrozenBagId = 'spicyChicken' | 'popcornShrimp' | 'potato' | 'chorizo';
+// 冷蔵庫から取って、作業台のどこにでも置けるパック。冷凍の袋4種類と、モッツァレラの袋
+export type BagId = FrozenBagId | 'mozzarella';
+// パックの場所。fridge = 冷蔵庫の中、hand = 手に持っている、table = 台の上に置いてある（spot）
+export type BagPlace = { at: 'fridge' } | { at: 'hand' } | { at: 'table'; spot: TableSpot };
+// 数に限りのある、下調理のストック（ポテトだけ。減ったら下調理で足す）
+export type PrepStockId = 'potato';
+// 具材台の天板のストック容器。potato = 下調理したポテト（数に限りがある）。ほかは、なくならない（使う品は C6・C7 で入る）。
+// tarakoSauce = クック用のたらこソース（クック編 C6。ヒートの取り出し元とは別に、1台目に置く）
+export type CookBinId = 'potato' | 'corn' | 'patty' | 'chicken' | 'focaccia' | 'egg' | 'oilSheet' | 'cheeseSauceCup' | 'demiglace' | 'vegPaste' | 'tarakoSauce';
 // 焼いたあとの仕上げ（受け台のほか。ソースをかける・振る・のせる）
 export type BakeFinishId = 'demiglace' | 'cheeseSauce' | 'vegetablePaste' | 'parsley' | 'cinnamon' | 'garlicSauce' | 'friedEgg';
 // 焼き皿の進み具合。loaded = 中身（のせた物と数）、stage = いまの段階の番号（省略 = 0。1回目）、cares = 済ませた手入れ、finishes = 済ませた仕上げ（受け台のほか）。
 // blank = 器の山から取った、空の器（焼く前の中身が入った山から取る品（ドリアなど）には当てはまらない。bake.ts の BakeDish.stock）。
+// stock = どの品の山から取った皿か（中身の入った山から取る品（ドリア4品）の id。省略 = その器の表の最初の山の品 = ミラノドリア）。
 // どれも省略 = まだ何もない（既存の2品は、どれも持たない）
-export type BakeProgress = { loaded?: BakeLoad; stage?: number; cares?: BakeCare[]; finishes?: BakeFinishId[]; blank?: boolean };
+export type BakeProgress = { loaded?: BakeLoad; stage?: number; cares?: BakeCare[]; finishes?: BakeFinishId[]; blank?: boolean; stock?: string };
 
 // ベルトに乗っている皿。x = ベルトの中心から皿の中心までの横のずれ（m）、s = 入口の端から皿の中心までの距離（m）。
 // cooked = いまの段階で、流す前までに焼いた秒数の合計（省略 = 0。今回の1周で出てくるまでの秒数は、まだ含まない）。
@@ -221,8 +294,14 @@ export type BakeProgress = { loaded?: BakeLoad; stage?: number; cares?: BakeCare
 export type OvenDish = { id: number; style: BakeStyle; x: number; s: number; cooked?: number; pizza?: PizzaBuild } & BakeProgress;
 
 // ピザ系の皿（鉄板）にのっている物。dough = ピザ生地、sauce = ピザソース（1杯）、cheese = ピザチーズ（1杯）、mozz = のっているモッツァレラチーズの数（0〜6。1個を3つ分に分けるので、2個で6つ）。
-// 鉄板だけ（dough = false）から、生地 → ソース → チーズ → モッツァレラ の順に重ねる（pizza.ts）
-export type PizzaBuild = { dough: boolean; sauce: boolean; cheese: boolean; mozz: number };
+// top = 4番目の具がモッツァレラ以外のとき、その種類（野菜ときのこ・ソーセージ・コーン。レードル1杯。省略 = モッツァレラ、またはまだのせていない）。
+// 4番目の具は1種類だけ（モッツァレラをのせたら top はのらない、top をのせたらモッツァレラはのらない）。
+// 鉄板だけ（dough = false）から、生地 → ソース → チーズ → 4番目の具 の順に重ねる（pizza.ts）
+export type PizzaBuild = { dough: boolean; sauce: boolean; cheese: boolean; mozz: number; top?: PizzaTop };
+
+// ピザの4番目の具（クック編 C3）。モッツァレラは数で数える（PizzaBuild の mozz）。ほかの3種類は、レードル1杯（PizzaBuild の top）
+export type PizzaFourth = 'mozzarella' | PizzaTop;
+export type PizzaTop = 'vegMushroom' | 'sausage' | 'corn';
 
 // ピザのお皿に入っている、焼き上がったピザ（鉄板は含まない）
 // 段階の進み具合（BakeProgress）は、鉄板から移すときに引き継ぐ（既存のバッファローピザは持たない）
@@ -240,7 +319,8 @@ export type PanPile = { spot: TableSpot; count: number };
 export type PropPreview = { what: 'plate' | 'pan' | 'panPile'; surface: SurfaceId; x: number; z: number; r: number; valid: boolean; reason?: 'gap' | 'surface' | 'pile' };
 
 // ピザの具の取り出し元（作業台の容器）。sauce = 正方形の容器のピザソース、cheese = 長方形の容器のピザチーズ（どちらもレードルで1杯）、mozzarella = プラスチックの容器のモッツァレラチーズ（1個）
-export type PizzaTopping = 'sauce' | 'cheese' | 'mozzarella';
+// vegMushroom・sausage・corn = 4番目の具の容器（野菜ときのこ・輪切りのソーセージ・コーン。レードルで1杯。モッツァレラの隣に並ぶ）
+export type PizzaTopping = 'sauce' | 'cheese' | 'mozzarella' | PizzaTop;
 
 export type Oven = {
   decks: Record<OvenDeck, OvenDish[]>;
@@ -253,7 +333,13 @@ export type OvenPreview = { deck: OvenDeck; style: BakeStyle; x: number; s: numb
 
 // 下駄の山を置き直そうとしたときの様子（置く前の見せ方に使う）。x, z は台の中心からの相対位置。
 // valid = false のとき、reason は置けない理由（gap: ボトル・容器に近すぎる、surface: この台には置けない）
-export type GetaPreview = { surface: SurfaceId; x: number; z: number; valid: boolean; reason?: 'gap' | 'surface' };
+// 手に持った道具を、台の上にべた置きしようとしている場所（置く前の見せ方）
+export type ToolPreview = { id: ToolId; surface: SurfaceId; x: number; z: number; valid: boolean; reason?: 'gap' | 'surface' };
+// 台の上に自由に置いた器（3列系で、受け台に乗せていない物）
+export type RestDish = { id: number; spot: TableSpot; dish: Extract<Item, { kind: 'bakeDish' }> };
+// 手に持った器を、台の上に置こうとしている場所（置く前の見せ方）
+export type RestPreview = { surface: SurfaceId; x: number; z: number; valid: boolean; reason?: 'gap' | 'surface'; size?: { w: number; d: number } }; // size = 置く物の大きさ（省略 = 器の大きさ）
+export type GetaPreview ={ surface: SurfaceId; x: number; z: number; valid: boolean; reason?: 'gap' | 'surface' };
 
 // 伝票の担当。pasta = パスタ台、salad = サラダ台、cook = クック（ジェットオーブンの焼き物：ドリア・ピザ）
 export type Station = 'pasta' | 'salad' | 'cook';
@@ -278,17 +364,23 @@ export type Item =
   | { kind: 'tray'; id: TrayId } // 冷蔵庫から取ったトレー・ケース（ほうれん草・塩オイルソース・小エビ・チキン・パンチェッタ・イカ・きのこ・ソテーソース）
   | { kind: 'bottle'; id: BottleId } // ドレッシング・パプリカパウダー・パセリ。右クリックで皿にかける・振る（なくならない）
   | { kind: 'pot'; pot: Pot }
+  | { kind: 'packBag'; id: BagId } // 冷蔵庫から取った（または台から持ち上げた）パック（冷凍の袋・モッツァレラの袋）。台の上のどこにでも置ける
   | { kind: 'ipad' } // 練習キッチンの壁にかかっている iPad。右クリックで画面を開く（ゲーム開始・レシピ）
-  | ({ kind: 'bakeDish'; style: BakeStyle; cooked: number; state: BakeState; geta?: boolean; board?: boolean; pizza?: PizzaBuild } & BakeProgress) // ジェットオーブンで焼く皿（ドリア系 = 長方形、ピザ系 = 丸）。cooked = いまの段階で焼いた秒数の合計、state = その焼け具合（oven.ts の bakeItem で作る）。geta = 下駄（木の台）に乗せてある（受け台が下駄の品の焼き上がりだけ。提供できる形）。中身・段階・手入れ・仕上げは BakeProgress（bake.ts）
+  | ({ kind: 'bakeDish'; style: BakeStyle; cooked: number; state: BakeState; geta?: boolean; board?: boolean; pizza?: PizzaBuild; outAt?: number } & BakeProgress) // ジェットオーブンで焼く皿（ドリア系 = 長方形、ピザ系 = 丸）。cooked = いまの段階で焼いた秒数の合計、state = その焼け具合（oven.ts の bakeItem で作る）。geta = 下駄（木の台）に乗せてある（受け台が下駄の品の焼き上がりだけ。提供できる形）。中身・段階・手入れ・仕上げは BakeProgress（bake.ts）。outAt = 油のはねる器（bake.ts の BAKE_VESSELS の sizzle。鉄板）を出口から取った、ゲーム内の時刻（油のはねる演出だけに使う。クック編 C7）
   | { kind: 'geta' } // ドリアの下にひく下駄（木の台）1枚。焼き上がったドリアに左クリックで、ドリアを乗せられる
   | { kind: 'board' } // 鉄板・スープ皿の下にひく木の板1枚（受け台。下駄と同じく、焼き上がった器を器ごと乗せる。board = true の焼き皿になる）
   | { kind: 'pizzaDough' } // ピザ生地1枚。ピザの鉄板にセットする
   | { kind: 'pizzaTopping'; id: PizzaTopping } // ピザソース・ピザチーズ（レードル1杯）、モッツァレラチーズ（1個）。ピザ組み立て台の鉄板にのせる
   | { kind: 'pizzaPlate'; dish?: PlateDish } // ピザのお皿1枚（焼き上がったピザが入っていることもある）。台に置いて、焼き上がったピザを入れる。ピザの入ったお皿は、提供台に出せる
-  | { kind: 'panPile'; count: number }; // 右クリックで持ち上げた、積んだ鉄板の山。台に置き直す・作業台の鉄板のスタックに戻す
+  | { kind: 'panPile'; count: number } // 右クリックで持ち上げた、積んだ鉄板の山。台に置き直す・作業台の鉄板のスタックに戻す
+  | { kind: 'loadStack'; id: BakeLoadId; count: number } // 重ねて持つ具（冷凍の袋・ストック容器から1つずつ取る。同じ種類だけ、上限まで。器をクリックすると、入るだけ入る。cookStock.ts）
+  | { kind: 'frozenBag'; id: FrozenBagId; left: number } // 袋ごと持った冷凍の袋（ポテト）。left = 残りの回数（大きめの焼成パッドに1回ずつ入れる。0 で手から消える）
+  | { kind: 'sauceCup'; fill: CupFill } // チーズソースの小さい容器（クック編 C7）。ストック容器から空で取り、ピザソース・ピザチーズの容器をクリックして入れる。入れ終わったら、2回目に流す前の鉄板にのせる
+  | { kind: 'sauceLadle'; id: BakeFinishId } // ストック容器からレードルで取った、焼き物にかけるソース（デミグラスソース・野菜ペースト。クック編 C7）。板に乗せた焼き上がりの鉄板をクリックでかける
+  | ({ kind: 'bakePlate'; from: BakeStyle; state: BakeState } & BakeProgress); // 小皿に移した焼き物（クック編 C6：シュリンプ・フォッカチオ）。from = 焼いた器（中身・段階は器のまま引き継ぐ）。受け台 smallPlate の品の、提供できる形
 
-// 作業枠に置ける物：3列系の焼き皿（受け台に乗せた物も）・下駄・板・小皿（どれが置けるかの決まりは game.ts の fitsWorkFrame）
-export type WorkFrameItem = Extract<Item, { kind: 'bakeDish' | 'geta' | 'board' | 'plate' }>;
+// 作業枠に置ける物：3列系の焼き皿（受け台に乗せた物も）・下駄・板・小皿（焼き物を移した小皿も）（どれが置けるかの決まりは game.ts の fitsWorkFrame）
+export type WorkFrameItem = Extract<Item, { kind: 'bakeDish' | 'geta' | 'board' | 'plate' | 'bakePlate' }>;
 
 // 視点の先にあるクリック可能な設備
 export type Target =
@@ -326,9 +418,21 @@ export type Target =
   | { kind: 'bottle'; id: BottleId } // 台の上のボトル
   | { kind: 'tableTop'; surface: SurfaceId; x: number; z: number } // 台の天板。x, z は視点が合っている点（台の中心からの相対）
   | { kind: 'washer' }
-  | { kind: 'ipadWall' }; // 後ろの壁にかかっている iPad（練習中だけ。左クリックで手に取る・壁に戻す）
+  | { kind: 'ipadWall' } // 後ろの壁にかかっている iPad（練習中だけ。左クリックで手に取る・壁に戻す）
+  | { kind: 'frozenBag'; id: FrozenBagId } // 具材台の上の壁の吊り棚の、冷凍の袋（左クリックで取る。なくならない）
+  | { kind: 'cookBin'; id: CookBinId } // 具材台の天板のストック容器（左クリックで1つ取る。ポテトは下調理したパッドを空ける）
+  | { kind: 'restDish'; id: number } // 作業台・提供台のまわりに置いた、使い終わった器・焼けた器（目玉焼き鉄板など、ヘラですくう物が残った器もここに置いておく。GameState.restDishes）
+  | { kind: 'toolHook'; id: ToolId } // 1台目の具材台の縁の、道具のフック（F で道具を取る・戻す・持ち替える。クック編 C4）
+  | { kind: 'fridgeBag'; id: BagId } // 冷蔵庫の中のパック（扉が開いている間だけ取れる）
+  | { kind: 'placedTool'; id: ToolId }; // 台の上にべた置きした道具（F で取る・持ち替える。GameState.toolSpots）
 
 // ready = ゲーム開始前の操作説明（クリックで始まる。時間は進まない）
+// --- 道具の手（クック編設計書 4.4 / C4）---
+// 道具の手が持てるのは、やっとこ（tongs）とヘラ（spatula）だけ。左手（GameState.hand）とは別に、F で操作する
+export type ToolId = 'tongs' | 'spatula';
+// 道具の手。tongs = やっとこ（つかんでいる器。null = 空）、spatula = ヘラ（すくった物 = 仕上げにのせる物。null = 空）
+export type ToolHand = { kind: 'tongs'; dish: Extract<Item, { kind: 'bakeDish' }> | null } | { kind: 'spatula'; scoop: BakeFinishId | null };
+
 export type Phase = 'title' | 'ready' | 'playing' | 'paused' | 'result';
 
 export type Toast = {
@@ -351,7 +455,10 @@ export type GameState = {
   ipadOpen: boolean; // iPad の画面を開いている間（マウスのカーソルが出て、視点は動かせない）
   tutorial: TutorialProgress | null; // チュートリアル中（練習キッチンで、選んだメニューを作り方の案内つきで作る）。なければ null
   time: number; // 経過時間（秒）
-  hand: Item | null;
+  hand: Item | null; // 左手（今までの手。左クリックで操作する）
+  tool: ToolHand | null; // 道具の手（やっとこ・ヘラだけ。F で操作する。null = 道具を持っていない）
+  bags: Record<BagId, BagPlace>; // パック5つの場所（冷蔵庫の中・手・作業台の上）
+  toolSpots: Record<ToolId, TableSpot | null>; // 手に持っていない道具の置き場所。null = フックに掛かっている、それ以外 = 台の上にべた置き（作業台・提供台のまわり）
   boilers: Boiler[];
   plateSlots: (IngredientId[] | null)[]; // 皿の置き場。左の台（plateSlotCount 個）→ サラダ台（saladSlotCount 個）の順。null = 皿なし
   plateStyles: PlateStyle[]; // plateSlots と同じ並び。置いてある皿の種類
@@ -367,6 +474,8 @@ export type GameState = {
   pizzaSlots: (Extract<Item, { kind: 'bakeDish' }> | null)[]; // ピザ組み立て台（作業台）に置いた鉄板。null = 空き
   getaSpot: TableSpot; // 下駄の山の置き場所（提供台の左）
   getaMoving: boolean; // 下駄の山を右クリックで持ち上げている最中（手とは別。台に右クリックで置く）
+  prepStock: Record<PrepStockId, number>; // 下調理のストックの数（ポテト。最初は config の potatoStockStart。取ると減る（トライアルは減らない）、下調理したパッドを空けると増える）
+  restDishes: RestDish[]; // 台の上に自由に置いた、使い終わった器・焼けた器（作業台・提供台のまわり。クック編 C7）
   workFrames: (WorkFrameItem | null)[]; // 1台目の具材台の作業枠（3つ。layout.ts の WORK_FRAMES）。置いてある物、null = 空き
   bottles: Record<BottleId, BottleSpot>; // 台の上のボトル
   bottleShakeAt: number | null; // 手に持ったボトルを最後に振った（かけた）ゲーム内時刻。振る動きの表示に使う

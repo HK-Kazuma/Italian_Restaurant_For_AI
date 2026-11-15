@@ -5,6 +5,7 @@ export type InputHandlers = {
   onRightClick: () => void;
   onLockChange: (locked: boolean) => void;
   onTicketZoom: (on: boolean) => void;
+  onTool: () => void; // F：道具の手（やっとこ・ヘラ）で操作する（クック編 C4）
 };
 
 // PointerLock 中のマウス・キー入力を、ゲーム側のコールバックに橋渡しする
@@ -41,6 +42,7 @@ export class Input {
     document.addEventListener('keydown', (e) => {
       if (!this.locked) return;
       if (e.code === 'KeyE') h.onTicketZoom(true);
+      if (e.code === 'KeyF' && !e.repeat) h.onTool(); // 押しっぱなしの繰り返しでは、1回だけ
       this.keys.add(e.code);
     });
     document.addEventListener('keyup', (e) => {

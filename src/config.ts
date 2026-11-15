@@ -35,6 +35,18 @@ export type GameConfig = {
   maxPlateContents: number; // 皿に載せられる中身の上限
   pizzaSlotCount: number; // 作業台：ピザの鉄板を置いて組み立てる場所の数
   pizzaPanCount: number; // 作業台：ピザの鉄板のスタックの枚数（1山。取ると減り、0になったら使い終わった鉄板を戻して再利用する）
+  // 冷凍の袋・ストック（クック編 C5。袋・容器の種類は cookStock.ts の表）
+  loadStackMax: number; // 冷凍の袋・ストック容器から、同じ種類の具を重ねて手に持てる数
+  potatoPerLargePad: number; // 大きめの焼成パッド1つ（冷凍ポテトの袋の1/4）を下調理すると、できるポテトの数
+  potatoStockStart: number; // ゲーム開始時の、下調理したポテトのストックの数
+  prepStockConsume: boolean; // ストックから取ると減るか（トライアルは減らない。difficulty.ts で上書きする）
+  prepStockLowAt: number; // ストックがこの数以下になったら、容器のラベルの色を変える
+  maxBakeFinishes: number; // 焼き物（受け台に乗せた器）に振る・かける仕上げの回数の上限（振りすぎは注文ミス。上限は、押し続けたときに際限なく増えないためだけ）
+
+  // 道具の手（クック編 C4）
+  fridgeCookSetup: boolean; // クックの最初の状態。true = 具材のケース・パックは冷蔵庫の中、やっとこ・ヘラは作業台の上（本番）。false = ケースは作業台のトレー置き場、パックは作業台の上、道具はフック（既存のテスト・チュートリアル）
+  hotHandling: boolean; // 熱い器（一度でもオーブンを通った器）を素手（左クリック）で取れない。やっとこ（F）でつかむ。トライアルは difficulty.ts でオフ
+  sizzleSeconds: number; // 焼けた鉄板（油のはねる器）を出口から取ってから、油のはねる粒を出す秒数（見た目だけ。クック編 C7）
 
   // 伝票
   firstTicketAt: number; // 最初の伝票が届く時刻（秒）
@@ -90,6 +102,17 @@ export const DEFAULT_CONFIG: GameConfig = {
   maxPlateContents: 8,
   pizzaSlotCount: 2,
   pizzaPanCount: 10,
+  maxBakeFinishes: 4, // 仮
+
+  loadStackMax: 9, // 仮（焼成パッドにシュリンプは9つまで）
+  potatoPerLargePad: 16, // 仮
+  potatoStockStart: 16, // 仮
+  prepStockConsume: true,
+  prepStockLowAt: 4, // 仮
+
+  fridgeCookSetup: false, // 既存のテストは、ケースが作業台にある状態から始まる。本番（main.ts）はオン
+  hotHandling: false, // 既存のテストは素手で出口の皿を取るため、標準はオフ。本番（main.ts）は PLAY_CONFIG でオン
+  sizzleSeconds: 5, // クック編設計書 4.7
 
   firstTicketAt: 3,
   ticketIntervalStart: 25,
@@ -110,3 +133,6 @@ export const DEFAULT_CONFIG: GameConfig = {
   reach: 5,
   mouseSensitivity: 0.0022,
 };
+
+// 本番（main.ts）で使う設定。熱い器はやっとこでつかむ（クック編 C4。トライアルは difficulty.ts でオフに上書きする）
+export const PLAY_CONFIG: GameConfig = { ...DEFAULT_CONFIG, hotHandling: true };

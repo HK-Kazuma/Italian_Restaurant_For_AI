@@ -1,4 +1,4 @@
-import type { Item, PizzaBuild, PizzaTopping } from './types';
+import type { BakeLoadId, Item, PizzaBuild, PizzaFourth, PizzaTop, PizzaTopping } from './types';
 
 // バッファローピザの組み立て（要件定義書「ピザ枠」）。
 //   ピザ生地のスタックから生地を取り、ピザの鉄板にセット → ピザソース1杯 → ピザチーズ1杯 → モッツァレラチーズを2個（1個を3つ分に分けるので、2個で6つ）→ オーブンの上段へ
@@ -12,7 +12,25 @@ export const PIZZA_TOPPING_NAME: Record<PizzaTopping, string> = {
   sauce: 'ピザソース',
   cheese: 'ピザチーズ',
   mozzarella: 'モッツァレラチーズ',
+  vegMushroom: '野菜ときのこ',
+  sausage: 'ソーセージ',
+  corn: 'コーン',
 };
+
+// 4番目の具のうち、レードル1杯でのせる3種類（クック編 C3）。load = 焼き物の表（bake.ts）で数える物の id、verb = のせるときの言い方
+export const PIZZA_TOPS: Record<PizzaTop, { load: BakeLoadId; verb: string }> = {
+  vegMushroom: { load: 'vegMushroom', verb: '野菜ときのこを全体に広げる' },
+  sausage: { load: 'slicedSausage', verb: '輪切りのソーセージを全体に並べる' },
+  corn: { load: 'corn', verb: 'コーンを全体に散らす' },
+};
+export const PIZZA_TOP_IDS = Object.keys(PIZZA_TOPS) as PizzaTop[];
+export const isPizzaTop = (id: PizzaTopping): id is PizzaTop => id in PIZZA_TOPS;
+
+// 4番目の具（モッツァレラ・野菜ときのこ・ソーセージ・コーン）。まだのせていなければ null
+export function fourthOf(p: PizzaBuild): PizzaFourth | null {
+  if (p.mozz > 0) return 'mozzarella';
+  return p.top ?? null;
+}
 
 // 鉄板だけ（生地なし）
 export function emptyPan(): PizzaBuild {
@@ -38,6 +56,10 @@ export function whyNotTopping(p: PizzaBuild, id: PizzaTopping): string | null {
   if (!p.sauce) return '先にピザソースを塗る';
   if (id === 'cheese') return p.cheese ? 'ピザチーズはのせてある' : null;
   if (!p.cheese) return '先にピザチーズを広げる';
+  // 4番目の具は1種類だけ（2種類目はのらない）
+  const fourth = fourthOf(p);
+  if (fourth !== null && fourth !== id) return `具は1種類だけ（もう${PIZZA_TOPPING_NAME[fourth]}がのっている）`;
+  if (isPizzaTop(id)) return p.top === id ? `${PIZZA_TOPPING_NAME[id]}はのせてある` : null;
   return p.mozz >= MOZZ_TOTAL ? 'モッツァレラはもう6つのっている' : null;
 }
 
@@ -48,6 +70,7 @@ export function addTopping(p: PizzaBuild, id: PizzaTopping): PizzaBuild {
   if (!canAddTopping(p, id)) return p;
   if (id === 'sauce') return { ...p, sauce: true };
   if (id === 'cheese') return { ...p, cheese: true };
+  if (isPizzaTop(id)) return { ...p, top: id };
   return { ...p, mozz: p.mozz + MOZZ_PER_BALL };
 }
 
@@ -64,9 +87,10 @@ export function pizzaName(p: PizzaBuild): string {
   if (!p.dough) return 'ピザの鉄板';
   if (!p.sauce) return 'ピザ生地';
   if (!p.cheese) return 'ピザ生地（ソース）';
+  if (p.top) return `ピザ（${PIZZA_TOPPING_NAME[p.top]}）`;
   if (p.mozz === 0) return 'ピザ生地（ソース・チーズ）';
   return `ピザ（モッツァレラ ${p.mozz}/${MOZZ_TOTAL}）`;
 }
 
-// ピザの見た目の違いを区別する文字列（描き直しが要るか調べるため）
-export const pizzaSignature = (p: PizzaBuild): string => `${p.dough ? 1 : 0}${p.sauce ? 1 : 0}${p.cheese ? 1 : 0}${p.mozz}`;
+// ピザの見た目の違いを区別する文字列（描き直しが要るか調べるため）。4番目の具の種類も入れる（モッツァレラは数、ほかは top）
+export const pizzaSignature = (p: PizzaBuild): string => `${p.dough ? 1 : 0}${p.sauce ? 1 : 0}${p.cheese ? 1 : 0}${p.mozz}${p.top ? `:${p.top}` : ''}`;

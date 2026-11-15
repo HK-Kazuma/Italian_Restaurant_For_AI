@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { BOTTLE_ACTION } from './bottle';
-import { DEFAULT_CONFIG } from './config';
+import { BOTTLE_ACTION, BOTTLE_PLATE, BOTTLE_SURFACES } from './bottle';
+import { PLAY_CONFIG } from './config';
 import { FRIDGE_ITEM_NAME, fridgeItemOf } from './fridge';
 import { Game } from './game';
 import { Hud } from './hud';
@@ -11,11 +11,11 @@ import { loadTutorialCleared, saveTutorialCleared } from './mission';
 import { rankingBoard } from './position';
 import { createKitchen } from './scene';
 import { loadSettings, lookScale, saveSettings } from './settings';
-import { TRAY_ZONE, isFreeTray, trayContentName } from './tray';
+import { TRAY_ZONE, isCaseTray, isFreeTray, trayContentName } from './tray';
 import type { Target } from './types';
 import './style.css';
 
-const cfg = DEFAULT_CONFIG;
+const cfg = { ...PLAY_CONFIG, fridgeCookSetup: true }; // 本番の設定（熱い器はやっとこでつかむ。トライアルは difficulty.ts でオフ）
 const BEST_KEY = 'kitchen-time-attack:best';
 
 function loadBest(): number {
@@ -82,6 +82,7 @@ const input = new Input(canvas, {
     }
   },
   onTicketZoom: (on) => hud.setTicketZoom(on),
+  onTool: () => interactor.current && game.useTool(interactor.current), // F：道具の手（クック編 C4）
   onLockChange: (locked) => {
     const { phase } = game.state;
     if (locked && phase === 'ready') game.begin(); // 操作説明をクリック = ゲーム開始
@@ -144,7 +145,7 @@ function hintFor(target: Target | null): string {
     // ガーリック・唐辛子の容器：ボトルと同じように、台の上のどこにでも置ける
     const p = game.previewFreeTray(target);
     if (p?.valid) return '左クリック：ここに置く';
-    if (p?.reason === 'surface') return 'この台には置けない（作業台はピザ用）';
+    if (p?.reason === 'surface') return 'この台には置けない（作業台に置けるのは、ピザの物とクック用のボトルだけ）';
     if (p) return 'ここには置けない（ほかの容器・ボトルに近すぎる）';
     return '台の上の好きな場所に視点を合わせて、左クリックで置く';
   }
@@ -153,11 +154,21 @@ function hintFor(target: Target | null): string {
       if (target.id !== TRAY_ZONE[hand.id]) return 'この置き場には置けない（種類が違う）';
       return game.trayAtSlot(target) ? 'この置き場は使用中（緑の印の空いている置き場に置く）' : '左クリック：ここに置く';
     }
-    return 'サラダ台の緑の印（矢印の先）に置く';
+    return isCaseTray(hand.id) ? '作業台の緑の印（トレー置き場。矢印の先）に置く' : 'サラダ台の緑の印（矢印の先）に置く';
+  }
+  if (hand?.kind === 'packBag') {
+    // 冷蔵庫から取ったパック：作業台の空いている所に置く
+    const p = game.previewBag(target);
+    if (p?.valid) return '左クリック：ここに置く';
+    if (p?.reason === 'surface') return 'パックは作業台にだけ置ける';
+    if (p) return 'ここには置けない（トレー置き場・作業枠・ほかの物に近すぎる）';
+    return '作業台の空いている所に視点を合わせて、左クリックで置く';
   }
   // 置いたトレー・ケース：左クリックで中身を取る、右クリックで持ち上げて置き直す
   const placedTray = !hand ? game.placedTrayOf(target) : null;
-  if (placedTray) return `左クリック：${trayContentName(placedTray)}を取る　右クリック：持ち上げて、置き直す`;
+  if (placedTray && !isCaseTray(placedTray)) return `左クリック：${trayContentName(placedTray)}を取る　右クリック：持ち上げて、置き直す`;
+  const stock = game.stockHint(target);
+  if (stock) return stock;
   const geta = game.getaHint(target);
   if (geta) return geta;
   const pizza = game.pizzaHint(target);
@@ -168,9 +179,13 @@ function hintFor(target: Target | null): string {
     if (game.canUseBottleAt(target)) return `右クリック：${BOTTLE_ACTION[hand.id]}`;
     const p = game.previewBottle(target);
     if (p?.valid) return '左クリック：ここに置く';
-    if (p?.reason === 'surface') return 'このボトルは、この台には置けない';
+    if (p?.reason === 'surface') {
+      // 作業台に置けるのは、クック用のボトル（グランモラビア・シナモンパウダー・ガーリックソース）だけ。クック用のボトルは、作業台にだけ置ける（bottle.ts）
+      if (BOTTLE_SURFACES[hand.id].includes('prep')) return 'クック用のボトルは、作業台（具材台の天板）か、壁の棚にだけ置ける';
+      return p.surface === 'prep' || p.surface === 'shelf' ? 'このボトルは作業台・棚には置けない（作業台に置けるのは、クック用のボトルだけ）' : 'このボトルは、この台には置けない';
+    }
     if (p) return 'ここには置けない（ほかのボトルに近すぎる）';
-    return `右クリック：${BOTTLE_ACTION[hand.id]}（皿に視点を合わせて）　左クリック：台の上に置く`;
+    return `右クリック：${BOTTLE_ACTION[hand.id]}（${BOTTLE_PLATE[hand.id] === 'bake' ? '作業枠の焼き物' : '皿'}に視点を合わせて）　左クリック：台の上に置く`;
   }
   const mix = game.mixProgressAt(target);
   if (mix) return `左クリック：混ぜる（${mix.done}/${mix.need}）`;
@@ -268,9 +283,11 @@ function frame(): void {
   player.applyTo(camera);
   if (game.state.phase === 'playing' && !game.state.ipadOpen) interactor.update(game);
   else interactor.clear();
-  kitchen.sync(game.state, dt, game.previewPlacement(interactor.current), game.previewFridge(interactor.current), interactor.current, game.previewOven(interactor.current), game.previewGeta(interactor.current), game.previewProp(interactor.current));
+  kitchen.sync(game.state, dt, game.previewPlacement(interactor.current), game.previewFridge(interactor.current), interactor.current, game.previewOven(interactor.current), game.previewGeta(interactor.current), game.previewProp(interactor.current), game.previewTool(interactor.current), game.previewRest('left', interactor.current) ?? game.previewRest('tongs', interactor.current) ?? game.previewBag(interactor.current));
   const tutorial = tutorialGuide();
-  hud.update(game.state, best, hintFor(interactor.current), game.tutorialView());
+  // 十字の下の案内：左クリック（ほか）の案内と、F（道具の手）の案内を2行で出す
+  const toolHint = game.state.phase === 'playing' ? game.toolHint(interactor.current) : '';
+  hud.update(game.state, best, [hintFor(interactor.current), toolHint].filter((x) => x).join('\n'), game.tutorialView());
   hud.setGuide(game.state.phase === 'playing' && !game.state.ipadOpen ? offscreenGuide(kitchen.trayGuide(game.state) ?? tutorial) : null);
   renderer.render(kitchen.scene, camera);
   requestAnimationFrame(frame);
