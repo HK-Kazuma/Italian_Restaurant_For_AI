@@ -59,9 +59,9 @@ export const DIFFICULTIES: readonly DifficultyDef[] = [
     tagline: 'キッチンのプロ。かなりの腕前',
     summary: '伝票は18秒おきから8秒おきへ、最大10枚。ペペロンチーノ・カルボナーラ・ペンネ・きのこのクリームパスタなど、手順の多いパスタや、小エビのカクテル・蒸し鶏の香味ソースが多めに届きます。',
     tickets: { firstTicketAt: 2, ticketIntervalStart: 18, ticketIntervalEnd: 8, ticketIntervalJitter: 0.3, maxOpenTickets: 10 },
-    menuWeights: { tarako: 1, meat: 2, parma: 2, peperoncino: 3, carbonara: 3, penne: 3, squidInk: 2, mushroomCream: 3, wakameSalad: 1, shrimpCocktail: 2, steamedChicken: 2, spinach: 2, shrimpSalad: 1, chickenSalad: 1, cornSoup: 1, milanoDoria: 2, buffaloPizza: 3 },
+    menuWeights: { tarako: 1, meat: 2, parma: 2, peperoncino: 3, carbonara: 3, penne: 3, squidInk: 2, mushroomCream: 3, wakameSalad: 1, shrimpCocktail: 2, steamedChicken: 2, spinach: 2, shrimpSalad: 1, chickenSalad: 1, cornSoup: 1, buffaloPizza: 3 },
     // クック編 C10（仮）：肉料理とスープを多め、ドリアとフォッカチオを少なめ。ピザ・前菜はその間（仕様にない判断）。
-    // ミラノドリア・バッファローピザは、既存の menuWeights の値（テストで固定）のまま
+    // バッファローピザは、既存の menuWeights の値（テストで固定）のまま。ミラノドリアは他のドリアと同じく分類の 1（2026-11-16 承認）
     categoryWeights: { meat: 3, cookSoup: 3, doriaGratin: 1, bread: 1, pizza: 2, cookStarter: 2 },
   },
 ];

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import rules from '../firestore.rules?raw';
 import { BAKE_TABLE, bakedMenus, findBakedTicket, getBakeDish, servableDish } from './bake';
 import { DEFAULT_CONFIG as cfg } from './config';
-import { DIFFICULTIES, getDifficulty } from './difficulty';
+import { DIFFICULTIES, getDifficulty, weightsFor } from './difficulty';
 import { Game } from './game';
 import { PIZZA_PLATE_GUIDE } from './layout';
 import { bakeItem, frontS } from './oven';
@@ -336,10 +336,11 @@ describe('ポジション：届く伝票の絞り込み', () => {
     expect(associate.get('buffaloPizza')!).toBeGreaterThan(associate.get('milanoDoria')!);
   });
 
-  it('重みの表：トライアル ドリア3・ピザ1／リーディング 各1／アソシエイト ドリア2・ピザ3', () => {
+  it('重みの表：トライアル ドリア3・ピザ1／リーディング 各1／アソシエイト ドリア1・ピザ3', () => {
     expect(getDifficulty('trial').menuWeights).toMatchObject({ milanoDoria: 3, buffaloPizza: 1 });
     expect(getDifficulty('leading').menuWeights).toMatchObject({ milanoDoria: 1, buffaloPizza: 1 });
-    expect(getDifficulty('associate').menuWeights).toMatchObject({ milanoDoria: 2, buffaloPizza: 3 });
+    // アソシエイトのミラノドリアは menuWeights から外し、分類（doriaGratin: 1）の重みになる（2026-11-16 承認）
+    expect(weightsFor('associate')).toMatchObject({ milanoDoria: 1, buffaloPizza: 3 });
   });
 
   it('練習キッチンからクックのゲームに入っても、冷蔵庫の配置を引き継ぐ', () => {
