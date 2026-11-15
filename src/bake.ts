@@ -218,6 +218,10 @@ export const BAKE_TABLE: readonly BakeDish[] = [
   // チキン2品：鉄板にチキン → L → ヘラではがす → コーン1杯・ポテト1個（仮）→ U → 板 → 仕上げ（若鶏 = 野菜ペースト（仮）、チーズ焼き = 容器のチーズソース）
   { id: 'chickenDiavola', vessel: 'hamburgPan', stages: chickenStages(), finish: { base: 'board', extras: ['vegetablePaste'], at: { vegetablePaste: 'center' } } },
   { id: 'chickenCheese', vessel: 'hamburgPan', stages: chickenStages([CHEESE_CUP]), finish: { base: 'board', extras: ['cheeseSauce'], at: { cheeseSauce: 'center' } } },
+  // --- クック編 C8：スープ2品（4.0 の「スープ」の表。末尾に足した）---
+  // 鉄のスープ皿に、湯煎器で温めたパックの中身を入れる（温まっていないパックは入らない。pack.ts の PACKS）→ U → 板（仮）
+  { id: 'zuppa', vessel: 'soupBowl', stages: [{ load: [{ id: 'zuppa', count: 1, at: 'all' }], need: 1 }], finish: { base: 'board' } },
+  { id: 'minestrone', vessel: 'soupBowl', stages: [{ load: [{ id: 'minestrone', count: 1, at: 'all' }], need: 1 }], finish: { base: 'board' } },
 ];
 
 // 付け合わせの表（クック編 C7。伝票には出ない。焼いた器に残したまま、ほかの品の仕上げに使う）。流す・焼け具合・器に入る数は、品の表と同じ決まりで調べる（flowRows）
@@ -271,6 +275,8 @@ export const BAKE_LOAD_NAME: Record<BakeLoadId, { name: string; unit: string; ho
   granMoravia: { name: 'グランモラビア', unit: '回' },
   egg: { name: '卵', unit: '個' },
   cheeseCup: { name: 'チーズソースの容器', unit: 'つ', how: '小さい容器にピザソース・ピザチーズを入れて、鉄板の空きにのせる' },
+  zuppa: { name: 'たまねぎのズッパ', unit: 'パック' },
+  minestrone: { name: 'ミネストローネ', unit: 'パック' },
 };
 
 // name = 案内の「→ ヘラではがす」、before = 「ヘラではがしてから流す」

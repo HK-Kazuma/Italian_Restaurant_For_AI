@@ -99,6 +99,9 @@ describe('表（BAKE_TABLE）の中身', () => {
       ['mixedGrill', 'hamburgPan', [2], 'board'],
       ['chickenDiavola', 'hamburgPan', [2, 1], 'board'],
       ['chickenCheese', 'hamburgPan', [2, 1], 'board'],
+      // --- C8（ステップL）：C8 の2品登録による（2026-11-16 承認）。表は25品。スープ2品はさらに末尾に並ぶ ---
+      ['zuppa', 'soupBowl', [1], 'board'],
+      ['minestrone', 'soupBowl', [1], 'board'],
     ]);
     expect(stageRange(BAKE_TABLE[1], 0).max).toEqual({ dough: 1, pizzaSauce: 1, pizzaCheese: 1, mozzarella: MOZZ_TOTAL });
   });

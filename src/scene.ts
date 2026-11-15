@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { GameConfig } from './config';
 import { INGREDIENTS } from './ingredients';
 import { BOTTLE_FRIDGE_ITEM, BOTTLE_IDS, bottleOfFridgeItem } from './bottle';
-import { BAKE_DISHES, BOARD, COOK_BIN, COOK_BIN_SPOTS, CASE_SLOTS, CASE_SLOT_COUNT, SHELF_ORIGIN, caseSlotSpot, FROZEN_SHELF, FROZEN_SHELF_SPAN, SHELF_PROPS, frozenBagSpot, COOK_SIDE_STACKS, DEV_PIZZA_SHELF, FREE_TRAY_HOME, GETA, HOT_WATER_COUNTER, LAYOUT, LEFT_COUNTER, OVEN, OVEN_BELT, OVEN_COUNTER, OVEN_COUNTER_ROW, OVEN_COUNTER_SHELF, OVEN_COUNTER_ZS, OVEN_STOCK_NAME, OVEN_Z, PIZZA_COUNTER, PIZZA_PLATE_R, PIZZA_PLATE_STACK, PIZZA_TOP_TUBS, ROOM_MIN_X, SERVE_PASS, SHELF_STACKS, SURFACES, REST_DISH, TOOL_HOOKS, TOOL_REST, WALL_HALF, WORK_FRAMES, shelfStackSpot, type Layout } from './layout';
+import { BAKE_DISHES, BOARD, COOK_BIN, COOK_BIN_SPOTS, CASE_SLOTS, CASE_SLOT_COUNT, SHELF_ORIGIN, caseSlotSpot, FROZEN_SHELF, FROZEN_SHELF_SPAN, SHELF_PROPS, frozenBagSpot, COOK_SIDE_STACKS, DEV_PIZZA_SHELF, FREE_TRAY_HOME, GETA, COOK_HOT_WATER, COOK_HOT_WATER_AT, COOK_PACK_CASES, HOT_WATER_COUNTER, LAYOUT, LEFT_COUNTER, OVEN, OVEN_BELT, OVEN_COUNTER, OVEN_COUNTER_ROW, OVEN_COUNTER_SHELF, OVEN_COUNTER_ZS, OVEN_STOCK_NAME, OVEN_Z, PIZZA_COUNTER, PIZZA_PLATE_R, PIZZA_PLATE_STACK, PIZZA_TOP_TUBS, ROOM_MIN_X, SERVE_PASS, SHELF_STACKS, SURFACES, REST_DISH, TOOL_HOOKS, TOOL_REST, WALL_HALF, WORK_FRAMES, shelfStackSpot, type Layout } from './layout';
 import { PIZZA_TOP_IDS, PIZZA_TOPPING_NAME, isPizzaTop, mozzSpots, pizzaName, pizzaOf, pizzaSignature } from './pizza';
 import { BAKE_STYLES, OVEN_DECKS, OVEN_DECK_NAME, bakeTime, beltSpeed, emergedCount, emergedLabel, isEmerged, laneOfOffset, ovenDishItem, remainingTime } from './oven';
 import { BAKE_VESSELS, CUP_FINISHES, FINISH_SPOT, defaultStock, finishLayout, isSizzling, loadLayout, progressSignature, unpouredCups, viewOf, type LoadSpot } from './bake';
@@ -1458,6 +1458,14 @@ function buildVessel(
     eggTop = size.h + 0.016;
     loaded = { ...loaded, egg: 0 };
   }
+  // 汁物（鉄のスープ皿。クック編 C8）：器の内側いっぱいの水面として描く（ます目には並べない）
+  const soups = loaded ? (Object.keys(loaded) as BakeLoadId[]).filter((id) => (loaded![id] ?? 0) > 0 && LOAD_LOOK[id]?.shape === 'soup') : [];
+  if (soups.length > 0) {
+    const soupY = size.h - 0.01;
+    for (const id of soups) addSoupSurface(g, id, state, (size.d - 0.02) / 2 - 0.016, soupY);
+    eggTop = Math.max(eggTop, soupY + 0.008);
+    loaded = { ...loaded, ...Object.fromEntries(soups.map((id) => [id, 0])) };
+  }
   const top = loaded ? Math.max(eggTop, addLoadPieces(g, loaded, w, d, 0.012, state, `vessel-${style}`, spots)) : eggTop || 0.012;
   if (finishes.length) addBakeFinishes(g, finishes, finishSpots, w, d, top, `vessel-${style}`);
   return g;
@@ -1537,9 +1545,11 @@ function buildVesselBody(style: BakeStyle, state: BakeState): THREE.Group {
 // bun = 薄い円盤（フォッカチオ。上がふくらんでいる）、flatbun = 逆さまのフォッカチオ（平らな面が上）、
 // spread = フォッカチオの上に塗る物（たらこソース・ピザチーズ）、dust = 上に振る粉（グランモラビア）。spread・dust は、円盤の上のまん中に重ねる
 // egg = 割った卵（目玉焼き。白身と黄身）、cup = チーズソースの小さい容器（ピザソースとピザチーズ入り）。クック編 C7
-type LoadShape = 'nugget' | 'wing' | 'link' | 'wedge' | 'disc' | 'bit' | 'curl' | 'hash' | 'sheet' | 'bun' | 'flatbun' | 'spread' | 'dust' | 'egg' | 'cup';
-// per = 1つ（1杯）を、いくつの粒で見せるか（省略 = 1。コーン1杯 = 粒がたくさん）
-type LoadLook = { color: number; baked?: number; shape: LoadShape; size: number; per?: number };
+// soup = 器いっぱいに入れた汁物（鉄のスープ皿。クック編 C8）。器の内側いっぱいの水面として描く（size は使わない）
+type LoadShape = 'nugget' | 'wing' | 'link' | 'wedge' | 'disc' | 'bit' | 'curl' | 'hash' | 'sheet' | 'bun' | 'flatbun' | 'spread' | 'dust' | 'egg' | 'cup' | 'soup';
+// per = 1つ（1杯）を、いくつの粒で見せるか（省略 = 1。コーン1杯 = 粒がたくさん）。
+// surface = 汁物の表面（soup だけ。crust = 焼くと表面にチーズの焼き色、bits = 具の粒。クック編 C8）
+type LoadLook = { color: number; baked?: number; shape: LoadShape; size: number; per?: number; surface?: 'crust' | 'bits' };
 const LOAD_LOOK: Partial<Record<BakeLoadId, LoadLook>> = {
   shrimp: { color: 0xeac08a, baked: 0xcf8a35, shape: 'curl', size: 0.036 }, // ポップコーンシュリンプ（衣つきの、きつね色の小さな曲がった揚げ物）
   spicyChicken: { color: 0xc9673d, baked: 0x8f3a1c, shape: 'wing', size: 0.075 }, // 辛味チキン（赤茶の手羽）
@@ -1557,7 +1567,39 @@ const LOAD_LOOK: Partial<Record<BakeLoadId, LoadLook>> = {
   corn: { color: 0xf3d03e, shape: 'bit', size: 0.014, per: 14 }, // コーン1杯（黄色い粒）
   egg: { color: 0xf4a81d, baked: 0xf0a020, shape: 'egg', size: 0.1 }, // 卵（色は黄身。白身は焼く前は半透明、焼くと白）
   cheeseCup: { color: 0xd2483a, baked: 0xe8b24a, shape: 'cup', size: 0.07 }, // チーズソースの小さい容器（中身は赤いソースと白いチーズ。焼くと溶けて、きつね色）
+  zuppa: { color: 0xc9a77c, shape: 'soup', size: 0, surface: 'crust' }, // たまねぎのズッパ（薄茶。焼くと表面にチーズの焼き色。クック編 C8）
+  minestrone: { color: 0xc8402c, baked: 0xb83822, shape: 'soup', size: 0, surface: 'bits' }, // ミネストローネ（赤に具の粒。クック編 C8）
 };
+
+// 汁物（soup）の水面と表面。r = 器の内側の半径、y = 水面の高さ。焦げると黒っぽくなる
+function addSoupSurface(g: THREE.Object3D, id: BakeLoadId, state: BakeState, r: number, y: number): void {
+  const look = LOAD_LOOK[id]!;
+  g.add(cyl(r, r, 0.004, loadColor(id, state), 0, y, 0)); // 水面
+  const rnd = seeded(hashId(`soup:${id}:${state}`));
+  if (look.surface === 'crust') {
+    // 焼くと、表面にチーズが広がって焼き色がつく（焼く前は、のせたチーズが白く見える）
+    const baked = state === 'baked' || state === 'half';
+    const cheese = state === 'burnt' ? 0x3a2414 : baked ? 0xe9b95a : 0xf4ecd2;
+    g.add(cyl(r * 0.82, r * 0.82, 0.003, cheese, 0, y + 0.003, 0));
+    if (state === 'baked' || state === 'burnt') {
+      for (let i = 0; i < 9; i++) {
+        const a = rnd() * Math.PI * 2;
+        const d = rnd() * r * 0.65;
+        const spot = cyl(0.01 + rnd() * 0.014, 0.01, 0.002, state === 'burnt' ? 0x1c120a : 0xa8642a, Math.cos(a) * d, y + 0.005, Math.sin(a) * d); // こげ目
+        spot.scale.z = 0.6 + rnd() * 0.6;
+        g.add(spot);
+      }
+    }
+  } else if (look.surface === 'bits') {
+    // 具の粒（にんじん・セロリ・豆など）
+    const colors = [0xf08a2c, 0x7fae4a, 0xf2e2b0, 0x9b3a22];
+    for (let i = 0; i < 16; i++) {
+      const a = rnd() * Math.PI * 2;
+      const d = Math.sqrt(rnd()) * r * 0.85;
+      g.add(box(0.012, 0.006, 0.012, state === 'burnt' ? 0x2a1d14 : colors[i % colors.length], Math.cos(a) * d, y + 0.004, Math.sin(a) * d));
+    }
+  }
+}
 
 // 冷凍ポテトの袋の1/4 を器に入れたときに見せる粒の数（下調理でできる数と同じ。createKitchen が設定値から入れる）
 let potatoPiecesPerPortion = 16;
@@ -2257,6 +2299,19 @@ function buildMozzBall(r = 0.042): THREE.Mesh {
 }
 
 // ステンレスの角形の容器（上が空いている）。ソース・チーズの容器。w = x 方向、d = z 方向。中身の面の高さを返す
+// 透明の袋に入ったパック（クック編 C8：スープ2品。中身の色は INGREDIENTS の色 = ズッパは薄茶、ミネストローネは赤）。
+// 温まったかどうかは、袋の口の帯の色で見せる（ほかのパックの袋の色と同じ：温まった = だいだい、冷たい = 白っぽい）
+const CLEAR_PACKS: readonly IngredientId[] = ['zuppa', 'minestrone'];
+function buildClearPack(id: IngredientId, warm: boolean, y: number): THREE.Group {
+  const g = new THREE.Group();
+  const bag = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.04, 0.2), new THREE.MeshLambertMaterial({ color: 0xf2f6f8, transparent: true, opacity: 0.35, depthWrite: false }));
+  bag.position.y = y;
+  g.add(bag); // 透明の袋
+  g.add(box(0.13, 0.03, 0.16, INGREDIENTS[id].color, 0, y - 0.003, 0.01)); // 中身（透けて見える）
+  g.add(box(0.15, 0.042, 0.025, warm ? 0xf5c26b : 0xdfe8ee, 0, y, -0.0875)); // 袋の口の帯
+  return g;
+}
+
 function buildSteelTub(w: number, d: number, h: number, fillColor: number): { group: THREE.Group; fillTop: number } {
   const g = new THREE.Group();
   const t = 0.008;
@@ -2388,8 +2443,12 @@ function buildItemMesh(item: Item): THREE.Group {
       g.add(buildBottle(INGREDIENTS[item.id].color, bottleCap(item.id)));
       break;
     case 'pack':
-      // パックを重ねて持つ。1つずつ、温まったかどうかで袋の色が変わる
+      // パックを重ねて持つ。1つずつ、温まったかどうかで袋の色が変わる。透明の袋のパック（CLEAR_PACKS。クック編 C8）は、中身の色が透けて見える
       item.packs.forEach((p, i) => {
+        if (CLEAR_PACKS.includes(p.id)) {
+          g.add(buildClearPack(p.id, p.warm, 0.02 + i * 0.043));
+          return;
+        }
         g.add(box(0.15, 0.04, 0.2, p.warm ? 0xf5c26b : 0xdfe8ee, 0, 0.02 + i * 0.043, 0)); // 袋
         g.add(box(0.1, 0.042, 0.08, INGREDIENTS[p.id].color, 0, 0.021 + i * 0.043, 0)); // ラベル
       });
@@ -2843,7 +2902,11 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
   // 作業台（具材台）の上の物の名前は、視点を合わせたときだけ出す。gateHover(ラベル, 視点が合っているか) で登録する。
   // managed = true は、見せる・隠すを別の場所（sync）が決めているラベル（そちらが見せるときだけ、視点が合っていれば出す）。false は、登録すると、合わせるまで隠す
   const sameTarget = (a: Target, b: Target | null): boolean =>
-    b !== null && a.kind === b.kind && (a as { id?: unknown }).id === (b as { id?: unknown }).id && (a as { index?: unknown }).index === (b as { index?: unknown }).index;
+    b !== null &&
+    a.kind === b.kind &&
+    (a as { id?: unknown }).id === (b as { id?: unknown }).id &&
+    (a as { index?: unknown }).index === (b as { index?: unknown }).index &&
+    (a.kind !== 'hotWaterSlot' || (a.unit ?? 0) === ((b as { unit?: number }).unit ?? 0)); // 湯煎器は2台（unit 省略 = 1台目。クック編 C8）
   const hoverGates: { label: Label; match: (hover: Target | null) => boolean; managed: boolean }[] = [];
   const gateHover = (label: Label, match: Target | ((hover: Target | null) => boolean), managed = false): Label => {
     hoverGates.push({ label, match: typeof match === 'function' ? match : (hover) => sameTarget(match, hover), managed });
@@ -3973,6 +4036,72 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
   decorIn(hotWaterSpot, '湯煎器', 0, 1.4, 0, 0.5); // 湯煎器の上に浮かぶ名前（パックの名前・タイマーより上）
   const hotWaterSteam = addSteam(hotWaterSpot, 0, 0.83, 0, { count: 14, rise: 0.45, spread: 0.5, size: 0.28 });
 
+  // --- 2台目の湯煎器（クック編 C8）：3台目の具材台の天板に置いた、上が開いた熱湯の箱（2×2 の4か所）と、隣のスープ2品のパックのケース ---
+  // 動きは1台目と同じ（浸けた時間の合計で温まる。冷めない）。位置は layout.ts の COOK_HOT_WATER・COOK_PACK_CASES
+  const COUNTER_TOP = 0.9;
+  const cookHotWaterSpot = new THREE.Group();
+  cookHotWaterSpot.position.set(COOK_HOT_WATER_AT.x, COUNTER_TOP, COOK_HOT_WATER_AT.z);
+  scene.add(cookHotWaterSpot);
+  {
+    const { w, d, h } = COOK_HOT_WATER;
+    const t = 0.02;
+    cookHotWaterSpot.add(box(w, 0.01, d, 0x9aa3ab, 0, 0.005, 0)); // 底
+    cookHotWaterSpot.add(box(w, h, t, 0x9aa3ab, 0, h / 2, d / 2 - t / 2)); // 4つの壁
+    cookHotWaterSpot.add(box(w, h, t, 0x9aa3ab, 0, h / 2, -d / 2 + t / 2));
+    cookHotWaterSpot.add(box(t, h, d, 0x9aa3ab, w / 2 - t / 2, h / 2, 0));
+    cookHotWaterSpot.add(box(t, h, d, 0x9aa3ab, -w / 2 + t / 2, h / 2, 0));
+    cookHotWaterSpot.add(box(w - 2 * t, 0.02, d - 2 * t, 0x5fb7e8, 0, h - 0.02, 0)); // 熱湯
+  }
+  const cookHotWaterViews: HotWaterView[] = [];
+  const chwCols = cfg.cookHotWaterColumns;
+  const chwRows = Math.ceil(cfg.cookHotWaterSlotCount / chwCols);
+  const chwPitchX = (COOK_HOT_WATER.w - 0.06) / chwCols;
+  const chwPitchZ = (COOK_HOT_WATER.d - 0.04) / chwRows;
+  for (let i = 0; i < cfg.cookHotWaterSlotCount; i++) {
+    const x = ((i % chwCols) - (chwCols - 1) / 2) * chwPitchX;
+    const z = (Math.floor(i / chwCols) - (chwRows - 1) / 2) * chwPitchZ;
+    const slot = new THREE.Group();
+    slot.add(box(chwPitchZ - 0.02, 0.01, chwPitchX - 0.03, 0x3a86c0, 0, 0.005, 0)); // 浸ける場所の印（slot ごと横向きに回す）
+    slot.position.set(x, COOK_HOT_WATER.h - 0.005, z);
+    slot.rotation.y = Math.PI / 2; // 帯の奥行きが浅いので、パックを横向き（長い辺を x 方向）に浸ける
+    setTarget(slot, { kind: 'hotWaterSlot', index: i, unit: 1 });
+    cookHotWaterSpot.add(slot);
+    interactables.push(slot);
+
+    const label = makeLabel('', 0.3);
+    label.sprite.position.set(x, COOK_HOT_WATER.h + 0.12, z);
+    label.sprite.visible = false;
+    cookHotWaterSpot.add(label.sprite);
+
+    const nameLabel = makeLabel('', 0.32);
+    nameLabel.sprite.position.set(x, COOK_HOT_WATER.h + 0.2, z);
+    nameLabel.sprite.visible = false;
+    cookHotWaterSpot.add(nameLabel.sprite);
+    cookHotWaterViews.push({ pack: new ItemView(slot), label, nameLabel });
+  }
+  decorIn(cookHotWaterSpot, '湯煎器', 0, COOK_HOT_WATER.h + 0.33, 0, 0.5); // 上の吊り棚（高さ 1.45）より下に出す
+  // 湯気は弱く出す（既存の Steam。粒を少なく、広がりは箱に合わせる）
+  const cookHotWaterSteam = addSteam(cookHotWaterSpot, 0, COOK_HOT_WATER.h, 0, { count: 7, rise: 0.3, spread: 0.2, size: 0.2 });
+  // スープ2品のパックのケース（なくならない取り出し元。左クリックで1つ取る。同じ種類なら重ねて持てる）
+  for (const c of COOK_PACK_CASES) {
+    const { group, fillTop } = buildSteelTub(COOK_BIN.w, COOK_BIN.d, COOK_BIN.h, 0xd8dde1);
+    for (let k = 0; k < 3; k++) {
+      const pack = buildClearPack(c.id, false, 0);
+      pack.position.set((k - 1) * 0.012, fillTop + 0.02 + k * 0.042, 0);
+      pack.rotation.y = Math.PI / 2;
+      pack.scale.setScalar(0.95);
+      group.add(pack);
+    }
+    const x = OVEN_COUNTER.x + c.xr;
+    const z = OVEN_COUNTER_ZS[COOK_HOT_WATER.counter] + c.zr;
+    group.position.set(x, COUNTER_TOP, z);
+    const target: Target = { kind: 'stock', id: c.id };
+    setTarget(group, target);
+    scene.add(group);
+    interactables.push(group);
+    gateHover(decor(`${INGREDIENTS[c.id].name}のパック`, x, COUNTER_TOP + 0.3, z, 0.5), target);
+  }
+
   // --- 歩ける範囲：壁の内側と、設備の当たり判定（上から見た矩形）---
   // 設備の位置・大きさを変えたら、ここも合わせる（冷蔵庫・サラダ台・熱湯は layout.ts に追従する）
   const obstacles: Rect[] = [
@@ -4417,6 +4546,7 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
     }
     markerArrow.position.y = 0.1 + 0.06 * Math.sin(guideTime * 5);
     hotWaterSteam.update(steamDt, 0.35);
+    cookHotWaterSteam.update(steamDt, 0.2); // 2台目の湯煎器は弱く
 
     boilerViews.forEach((v, i) => {
       const b = state.boilers[i];
@@ -4443,8 +4573,7 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
       v.show(contents ? { kind: 'plate', contents, style: state.plateStyles[i] } : null);
     });
 
-    hotWaterViews.forEach((v, i) => {
-      const pack = state.hotWater[i];
+    const showHotWater = (v: HotWaterView, pack: GameState['hotWater'][number]) => {
       v.pack.show(pack ? { kind: 'pack', packs: [pack] } : null);
       v.label.sprite.visible = !!pack;
       v.nameLabel.sprite.visible = !!pack;
@@ -4453,7 +4582,9 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
         if (pack.warm) v.label.setText('済', '#8be28b');
         else v.label.setText(`${Math.floor(pack.soak)}`, '#ffffff');
       }
-    });
+    };
+    hotWaterViews.forEach((v, i) => showHotWater(v, state.hotWater[i]));
+    cookHotWaterViews.forEach((v, i) => showHotWater(v, state.cookHotWater[i] ?? null));
 
     // 作業台のトレー置き場に置いたケース（冷蔵庫・手にある間は隠す）と、作業台に置いたパック
     for (const v of caseViews) {

@@ -24,7 +24,9 @@ const C6_IDS: string[] = [...STARTERS, ...BREADS];
 const C3_AND_BEFORE = ['milanoDoria', 'buffaloPizza', 'cheeseMilanoDoria', 'tarakoDoria', 'tarakoGratin', 'vegMushroomPizza', 'sausagePizza', 'cornPizza'];
 // C7（ステップJ）で鉄板焼き6品が、C6 の9品のさらに後ろ（末尾）に登録された（C7 の6品登録による。2026-11-15 承認）。クックの伝票は23品
 const C7_IDS = ['hamburg', 'italianHamburg', 'diavolaHamburg', 'mixedGrill', 'chickenDiavola', 'chickenCheese'];
-const ALL_COOK = [...C3_AND_BEFORE, ...C6_IDS, ...C7_IDS];
+// C8（ステップL）でスープ2品が、C7 の6品のさらに後ろ（末尾）に登録された（C8 の2品登録による。2026-11-16 承認）。クックの伝票は25品
+const C8_IDS = ['zuppa', 'minestrone'];
+const ALL_COOK = [...C3_AND_BEFORE, ...C6_IDS, ...C7_IDS, ...C8_IDS];
 
 type Dish = Extract<Item, { kind: 'bakeDish' }>;
 
@@ -112,7 +114,7 @@ describe('C6 の9品の登録（表の行とメニュー）', () => {
     expect(menusFor('cook').slice(C3_AND_BEFORE.length, C3_AND_BEFORE.length + C6_IDS.length).map((m) => m.id)).toEqual(C6_IDS);
     expect(MENU[0].id).toBe('tarako');
     expect(bakedMenus().map((m) => m.id)).toEqual(ALL_COOK);
-    expect(menusFor('cook')).toHaveLength(23); // C7 の6品登録による（2026-11-15 承認）。17 → 23
+    expect(menusFor('cook')).toHaveLength(25); // C7 の6品登録による（2026-11-15 承認）。17 → 23。C8 の2品登録による（2026-11-16 承認）。23 → 25
     expect(menusFor('heat')).toHaveLength(15);
     expect(tableProblems()).toEqual([]);
   });
@@ -178,7 +180,7 @@ describe('受け入れ条件（設計書 4.6）', () => {
       g.update(0.001);
       for (const t of g.state.tickets) seen.add(t.menuId);
     }
-    // C7 の6品登録による（2026-11-15 承認）：クックの伝票は23品
+    // C7 の6品登録による（2026-11-15 承認）：クックの伝票は23品。C8 の2品登録による（2026-11-16 承認）：25品
     expect([...seen].sort()).toEqual([...ALL_COOK].sort());
   });
 

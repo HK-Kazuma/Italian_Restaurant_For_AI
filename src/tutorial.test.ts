@@ -129,6 +129,15 @@ const c7Ladle = (id: 'demiglace' | 'vegPaste'): Act[] => [c6Bin(id), workFrame(0
 const c7Egg: Act[] = [{ tool: spatulaHook }, { tool: workFrame(1) }, { tool: workFrame(0) }];
 const c7Serve: Act[] = [workFrame(0), pass];
 
+// --- C8：スープ2品（ステップL。工程は表から作る。パックはオーブン側の湯煎器（2台目。unit 1）で温める）---
+const cookHotWater = (index: number): Target => ({ kind: 'hotWaterSlot', index, unit: 1 });
+// スープ皿を作業枠0に置く → パックを取ってオーブン側の湯煎器に浸ける → 温まったら取って、スープ皿に入れる → 上段 → 板に乗せて、そのまま提供（仕上げなし）
+const c8Soup = (id: 'zuppa' | 'minestrone', warm: number): Act[] => [
+  c6Vessel('soupBowl'), workFrame(0), stock(id), cookHotWater(0), wait(warm + 0.5), cookHotWater(0), workFrame(0),
+  workFrame(0), c6Inlet('upper', 'soupBowl'), wait(cfg.ovenUpperTime + 1),
+  boardStack, c6Outlet('upper'), pass,
+];
+
 const SCRIPTS: Record<string, Act[]> = {
   tarako: [
     rack, basket(0), button(0), plateStack, slot(0), wait(cfg.boilTime + 1),
@@ -289,6 +298,8 @@ const SCRIPTS: Record<string, Act[]> = {
   diavolaHamburg: [...c7First('patty', 'upper'), ...c7Eggs, ...c7Second('upper', true, false), ...c7Ladle('vegPaste'), ...c7Egg, ...c7Serve],
   chickenDiavola: [...c7First('chicken', 'lower'), ...c7Second('lower', false, false), ...c7Ladle('vegPaste'), ...c7Serve],
   chickenCheese: [...c7First('chicken', 'lower'), ...c7Second('lower', false, true), workFrame(0), ...c7Serve],
+  zuppa: c8Soup('zuppa', cfg.zuppaWarmTime),
+  minestrone: c8Soup('minestrone', cfg.minestroneWarmTime),
 };
 
 function newTutorial(menuId: string) {

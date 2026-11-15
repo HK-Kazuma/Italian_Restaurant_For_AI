@@ -23,7 +23,8 @@ describe('分類の表', () => {
   it('全品（ヒート15品・クック23品）が、表にある分類のどれか1つに入る', () => {
     // C6（ステップH）で前菜4品・フォッカチオ5品を登録したため、クックは8品 → 17品（全品 23 → 32）
     // C7 の6品登録による（2026-11-15 承認）：鉄板焼き6品が入り、クックは17品 → 23品（全品 32 → 38）
-    expect(ALL_MENU).toHaveLength(38);
+    // C8 の2品登録による（2026-11-16 承認）：スープ2品が入り、クックは23品 → 25品（全品 38 → 40）
+    expect(ALL_MENU).toHaveLength(40);
     const ids = new Set(MENU_CATEGORIES.map((c) => c.id));
     for (const m of ALL_MENU) expect(ids.has(m.category), m.id).toBe(true);
   });
@@ -63,8 +64,9 @@ describe('一覧の分類分け（menuSections）', () => {
     expect(menuSections('heat').map((s) => s.category.id)).toEqual(HEAT_CATEGORIES);
     // C6（ステップH）で前菜・焼きたてパンの品が入ったため、クックの分類は4つ（表の順：前菜・ピザ・ドリア＆グラタン・焼きたてパン）
     // C7 の6品登録による（2026-11-15 承認）：肉料理（meat）の品が入ったため、クックの分類は5つ（表の順：前菜・肉料理・ピザ・ドリア＆グラタン・焼きたてパン）
-    expect(menuSections('cook').map((s) => s.category.id)).toEqual(['cookStarter', 'meat', 'pizza', 'doriaGratin', 'bread']);
-    expect(menuSections('all').map((s) => s.category.id)).toEqual([...HEAT_CATEGORIES, 'cookStarter', 'meat', 'pizza', 'doriaGratin', 'bread']);
+    // C8 の2品登録による（2026-11-16 承認）：スープ（cookSoup）の品が入ったため、クックの分類は6つ（表の順：前菜・肉料理・ピザ・ドリア＆グラタン・スープ・焼きたてパン）
+    expect(menuSections('cook').map((s) => s.category.id)).toEqual(['cookStarter', 'meat', 'pizza', 'doriaGratin', 'cookSoup', 'bread']);
+    expect(menuSections('all').map((s) => s.category.id)).toEqual([...HEAT_CATEGORIES, 'cookStarter', 'meat', 'pizza', 'doriaGratin', 'cookSoup', 'bread']);
     const pasta = menuSections('heat')[0];
     expect(pasta.cards.map((c) => c.id)).toEqual(MENU.filter((m) => m.category === 'pasta').map((m) => m.id));
   });
@@ -78,6 +80,8 @@ describe('一覧の分類分け（menuSections）', () => {
       ['meat', ['hamburg', 'italianHamburg', 'diavolaHamburg', 'mixedGrill', 'chickenDiavola', 'chickenCheese']],
       ['pizza', ['buffaloPizza', 'vegMushroomPizza', 'sausagePizza', 'cornPizza']],
       ['doriaGratin', ['milanoDoria', 'cheeseMilanoDoria', 'tarakoDoria', 'tarakoGratin']],
+      // C8 の2品登録による（2026-11-16 承認）：スープ2品は、ドリア＆グラタンの次のスープの分類に入る
+      ['cookSoup', ['zuppa', 'minestrone']],
       ['bread', ['focaccia', 'cinnamonFocaccia', 'garlicFocaccia', 'tarakoFocaccia', 'cheeseFocaccia']],
     ]);
   });

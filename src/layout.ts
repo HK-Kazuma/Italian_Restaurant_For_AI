@@ -1,4 +1,4 @@
-import type { BakeSeries, BakeStyle, BottleId, CookBinId, FreeTrayId, PizzaTop, PlateStyle, SurfaceId, TableSpot, ToolId } from './types';
+import type { BakeSeries, BakeStyle, BottleId, CookBinId, FreeTrayId, IngredientId, PizzaTop, PlateStyle, SurfaceId, TableSpot, ToolId } from './types';
 
 // 設備の置き場所。ここの数値を直すと、その設備が動く（保存すると開発サーバーが自動で読み込み直す）。
 //
@@ -479,6 +479,20 @@ export function overlapsShelfFixture(x: number, z: number, r: number): boolean {
   return SHELF_FIXTURES.some((f) => Math.abs(f.x - x) < f.hx + r && Math.abs(f.z - z) < f.hz + r);
 }
 
+// 2台目の湯煎器（クック編 C8）：3台目の具材台の天板に置く、上が開いた熱湯の箱（2×2 の4か所。数は config の cookHotWaterSlotCount）。
+// 位置は具材台の中心からの相対（xr: 部屋の中央側、zr: 壁側）。天板のまん中・左の壁側のまん中・部屋の中央側の角は、お皿・鉄板の山・道具を
+// 置けるように空けておくので、手前（+z）の端の帯に、左の壁側から 湯煎器 → パックのケース2つ の順に並べる。w = x 方向、d = z 方向、h = 天板からの高さ。
+// 帯の奥行きが浅いので、パックは横向き（長い辺を x 方向）に浸ける
+export const COOK_HOT_WATER = { counter: 2, xr: -0.56, zr: 0.425, w: 0.5, d: 0.33, h: 0.14 };
+// 2台目の湯煎器の中心（部屋の座標）
+export const COOK_HOT_WATER_AT = { x: OVEN_COUNTER.x + COOK_HOT_WATER.xr, z: OVEN_COUNTER_ZS[COOK_HOT_WATER.counter] + COOK_HOT_WATER.zr };
+// 2台目の湯煎器の隣の、スープ2品のパックのケース（なくならない取り出し元。大きさはクックの具材のケース COOK_BIN と同じ）。
+// 位置は湯煎器と同じ具材台の中心からの相対。湯煎器の部屋の中央側（+x）の隣に、x 方向に並べる
+export const COOK_PACK_CASES: readonly { id: IngredientId; xr: number; zr: number }[] = [
+  { id: 'zuppa', xr: -0.15, zr: 0.425 },
+  { id: 'minestrone', xr: 0.12, zr: 0.425 },
+];
+
 // 作業台（prep）の天板に、もとから置いてある物（中心の相対位置と、半分の大きさ）。2台目の具材台のピザの置き場と、1台目の作業枠、ストック容器
 const counterZ = (i: number) => OVEN_COUNTER_ZS[i] - OVEN_COUNTER_ROW.z; // 何台目の具材台の中心か（作業台の中心からの相対）
 const pizzaAtZ = counterZ(PIZZA_COUNTER.counter);
@@ -491,6 +505,9 @@ export const PREP_FIXTURES: readonly { x: number; z: number; hx: number; hz: num
     const at = caseSlotSpot(i);
     return { x: at.xr, z: counterZ(CASE_SLOTS.counter) + at.zr, hx: COOK_BIN.w / 2, hz: COOK_BIN.d / 2 };
   }),
+  // 3台目の具材台の2台目の湯煎器と、その隣のスープ2品のパックのケース（クック編 C8）
+  { x: COOK_HOT_WATER.xr, z: counterZ(COOK_HOT_WATER.counter) + COOK_HOT_WATER.zr, hx: COOK_HOT_WATER.w / 2, hz: COOK_HOT_WATER.d / 2 },
+  ...COOK_PACK_CASES.map((c) => ({ x: c.xr, z: counterZ(COOK_HOT_WATER.counter) + c.zr, hx: COOK_BIN.w / 2, hz: COOK_BIN.d / 2 })),
 ];
 
 // ピザのお皿・鉄板（の山）を置ける台と、その範囲。置けない台（サラダ台・湯煎器の台）は null

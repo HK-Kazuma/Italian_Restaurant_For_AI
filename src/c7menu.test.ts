@@ -32,6 +32,8 @@ import type { BakeStyle, CookBinId, FrozenBagId, Item, OvenDeck, PizzaTopping, T
 // 4.0 の「肉料理」の表どおりに BAKE_TABLE（bake.ts）・MENU（recipe.ts）の末尾へ登録し、クックの伝票は23品になる。
 
 const C7_IDS = ['hamburg', 'italianHamburg', 'diavolaHamburg', 'mixedGrill', 'chickenDiavola', 'chickenCheese'];
+// C8（ステップL）でスープ2品が、C7 の6品のさらに後ろ（末尾）に登録された（C8 の2品登録による。2026-11-16 承認）。クックの伝票は25品
+const C8_IDS = ['zuppa', 'minestrone'];
 const BEFORE = [
   'milanoDoria',
   'buffaloPizza',
@@ -237,9 +239,11 @@ function makeOnFrame(g: Game, id: string): void {
 
 describe('C7 の6品の登録（表の行とメニュー）', () => {
   it('表とメニューの末尾に、6品がこの並びで載る。既存の17品の並びは変わらない。クックの伝票は23品', () => {
-    expect(BAKE_TABLE.map((d) => d.id)).toEqual([...BEFORE, ...C7_IDS]);
-    expect(MENU.slice(-C7_IDS.length).map((m) => m.id)).toEqual(C7_IDS);
-    expect(menusFor('cook').map((m) => m.id)).toEqual([...BEFORE, ...C7_IDS]);
+    // C8 の2品登録による（2026-11-16 承認）：C8 の2品が後ろに足されたため、「末尾の6行」ではなく C7 の6品の位置で比べる
+    // （メニューは C8 の2品のすぐ前の6行）。表・クックの品の全体は C8 の2品を足した25品
+    expect(BAKE_TABLE.map((d) => d.id)).toEqual([...BEFORE, ...C7_IDS, ...C8_IDS]);
+    expect(MENU.slice(-(C7_IDS.length + C8_IDS.length), -C8_IDS.length).map((m) => m.id)).toEqual(C7_IDS);
+    expect(menusFor('cook').map((m) => m.id)).toEqual([...BEFORE, ...C7_IDS, ...C8_IDS]);
     for (const id of C7_IDS) {
       const m = getMenu(id);
       expect(m).toMatchObject({ station: 'cook', category: 'meat', form: 'bake', enabled: true, ingredients: [] });
@@ -295,7 +299,8 @@ describe('C7 の6品の登録（表の行とメニュー）', () => {
       g.update(0.001);
       for (const t of g.state.tickets) seen.add(t.menuId);
     }
-    expect([...seen].sort()).toEqual([...BEFORE, ...C7_IDS].sort());
+    // C8 の2品登録による（2026-11-16 承認）：クックの伝票は25品
+    expect([...seen].sort()).toEqual([...BEFORE, ...C7_IDS, ...C8_IDS].sort());
   });
 
   it('game.ts に品の名前で分ける条件がない（段・中身・仕上げは表から引く）', () => {

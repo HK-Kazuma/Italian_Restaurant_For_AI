@@ -7,7 +7,7 @@ import { INGREDIENTS } from './ingredients';
 import { BAKE_DISHES, BOTTLE_HOME, FREE_TRAY_HOME, OVEN_STOCK_NAME, PIZZA_PLATE_GUIDE, SHELF_STACKS, WORK_FRAMES } from './layout';
 import { OVEN_DECKS, OVEN_DECK_NAME, bakeTime, isEmerged, laneOfOffset, timeToEmerge } from './oven';
 import { MOZZ_PER_BALL, MOZZ_TOTAL, PIZZA_TOPPING_NAME, isPizzaTop, pizzaOf } from './pizza';
-import { warmTime } from './pack';
+import { packOfLoad, warmTime } from './pack';
 import { isNoodle } from './pot';
 import { getMenu, type MenuItem } from './recipe';
 import { TRAY_FRIDGE_ITEM, TRAY_NAME, TRAY_ZONE, freeTraySpots, isFreeTray } from './tray';
@@ -63,6 +63,10 @@ export function matchesTarget(actual: Target, spec: GuideAt): boolean {
   if (actual.kind === 'fridgeDoor' && spec.kind === 'fridgeDoor') {
     // 冷蔵庫は2台ある。unit を省略した設備は 0 番（spec が unit を書かなければ、どちらの冷蔵庫でもよい）
     return spec.unit === undefined || (actual.unit ?? 0) === spec.unit;
+  }
+  if (actual.kind === 'hotWaterSlot' && spec.kind === 'hotWaterSlot') {
+    // 湯煎器は2台ある（クック編 C8）。unit を省略した置き場は 0 番（1台目）
+    return actual.index === spec.index && (actual.unit ?? 0) === (spec.unit ?? 0);
   }
   const a = actual as Record<string, unknown>;
   const b = spec as Record<string, unknown>;
@@ -811,6 +815,43 @@ function makeKit(menu: MenuItem, cfg: GameConfig) {
         });
         continue;
       }
+      if (source.kind === 'pack') {
+        // パックをケースから取り、オーブン側の湯煎器（2台目。unit 1）に浸けて温め、温まったら器に中身を入れる（温まっていないパックは入らない）
+        const id = source.id;
+        const need = warmTime(id, cfg) ?? 0;
+        const slotOf = (s: GameState, warm: boolean) => s.cookHotWater.findIndex((p) => p?.id === id && (!warm || p.warm));
+        const slotAt = (i: number): Target => ({ kind: 'hotWaterSlot', unit: 1, index: Math.max(0, i) });
+        const packInHand = (s: GameState, warm: boolean) => s.hand?.kind === 'pack' && s.hand.packs.some((p) => p.id === id && (!warm || p.warm));
+        const warmBeyond = (s: GameState) => packInHand(s, true) || done(s);
+        steps.push(
+          carry({
+            label: `${INGREDIENTS[id].name}のパックを取って、オーブン側の湯煎器（3台目の具材台）に浸ける`,
+            from: () => ({ kind: 'stock', id }),
+            holding: (s) => packInHand(s, false) && !packInHand(s, true),
+            to: (s) => slotAt(s.cookHotWater.findIndex((p) => p === null)),
+            done: (s) => slotOf(s, false) >= 0 || warmBeyond(s),
+            hint: (_s, holding) => (holding ? '湯煎器の空いている場所を左クリックで浸ける' : '湯煎器の隣のケースを左クリックで、パックを1つ取る'),
+          }),
+          {
+            label: `パックが温まるまで待つ（${need}秒以上）`,
+            at: (s) => slotAt(slotOf(s, false)),
+            done: (s) => slotOf(s, true) >= 0 || warmBeyond(s),
+            hint: (s) => {
+              const pack = s.cookHotWater.find((p) => p?.id === id);
+              return pack ? `浸けた時間 ${Math.floor(pack.soak)}/${need}秒` : null;
+            },
+          },
+          carry({
+            label: `温まったパックを取って、作業枠の${vesselName}に中身を入れる`,
+            from: (s) => slotAt(slotOf(s, true)),
+            holding: (s) => packInHand(s, true),
+            to: frameOf,
+            done,
+            hint: (_s, holding) => (holding ? `作業枠の${vesselName}を左クリックで入れる` : '湯煎器の温まったパック（「済」）を左クリックで取る'),
+          }),
+        );
+        continue;
+      }
       if (source.kind === 'cup') {
         // 小さい容器を取り、ピザの具の容器で中身を入れて（表の CUP_FILLS の順）、器の空きにのせる
         const binTarget: Target = { kind: 'cookBin', id: source.id };
@@ -1132,7 +1173,9 @@ type LoadSource =
   | { kind: 'flip'; id: CookBinId; from: BakeLoadId }
   | { kind: 'rightTake'; id: PizzaTopping }
   | { kind: 'bottle'; id: BottleId }
-  | { kind: 'cup'; id: CookBinId; fills: PizzaTopping[] };
+  | { kind: 'cup'; id: CookBinId; fills: PizzaTopping[] }
+  | { kind: 'pack'; id: IngredientId };
+// （pack = 湯煎器で温めるパック。ケースから取り、2台目の湯煎器（オーブン側）に浸けて温め、器に中身を入れる。pack.ts の PACKS の load。クック編 C8）
 // 仕上げの取り出し元。bottle = ボトルを右クリックで振る、ladle = ソースの容器からレードルで1杯取ってかける（cookStock.ts の COOK_BINS の sauce）、
 // cup = 一緒に焼いた容器のソースを、手が空の左クリックでかける（bake.ts の CUP_FINISHES）、
 // scoop = 付け合わせの表（SIDE_TABLE）の器を作って焼き、ヘラ（F）で1つすくってのせる（bake.ts の SCOOP_LOADS）
@@ -1161,6 +1204,8 @@ function cupPath(to: CupFill): PizzaTopping[] | null {
 
 // のせる物を、どこから取るか（表から探す。見つからなければ null）
 function loadSource(id: BakeLoadId): LoadSource | null {
+  const pack = packOfLoad(id);
+  if (pack) return { kind: 'pack', id: pack };
   const bag = FROZEN_BAG_IDS.find((b) => FROZEN_BAGS[b].load === id && !FROZEN_BAGS[b].whole);
   if (bag) return { kind: 'bag', id: bag };
   const bin = COOK_BIN_IDS.find((b) => COOK_BINS[b].gives === id && !COOK_BINS[b].stock);

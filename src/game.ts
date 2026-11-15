@@ -21,7 +21,7 @@ import {
 } from './pot';
 import { BAKE_STATE_NAME, OVEN_DECK_NAME, bakeItem, bakeTime, canTakeDish, createOven, itemFromOven, ovenDishItem, peekDish, placeDish, resolvePlacement, takeDish, timeToEmerge, updateOven } from './oven';
 import { canStackPack, createPack, findWarmPack, soakPack, stockItem } from './pack';
-import { BAG_IDS, CUP_FILLS, FROZEN_BAGS, PREP_STOCKS, SOURCE_RIGHT_TAKE, bagClick, bagHint, binHint, cupFillWith, cupNext, emptyYield, flipLoadOf, initialPrepStock, isPourHand, pourHint, pourInto, rightTakeOf, takeFromBin, whyNotPour } from './cookStock';
+import { BAG_IDS, CUP_FILLS, FROZEN_BAGS, PREP_STOCKS, SOURCE_RIGHT_TAKE, bagClick, bagHint, binHint, cupFillWith, cupNext, emptyYield, flipLoadOf, initialPrepStock, isPourHand, packPourHint, pourHint, pourInto, pourPack, rightTakeOf, takeFromBin, whyNotPour } from './cookStock';
 import { findMatchingTicket, findSauceRecipe, getMenu } from './recipe';
 import { PIZZA_TOPPING_NAME, PIZZA_TOPS, addTopping, canAddTopping, emptyPan, isPizzaTop, pizzaOf, whyNotTopping } from './pizza';
 import { serveScore } from './score';
@@ -186,6 +186,7 @@ export class Game {
       ) as Record<BottleId, BottleSpot>,
       bottleShakeAt: null,
       hotWater: Array.from({ length: this.cfg.hotWaterSlotCount }, () => null),
+      cookHotWater: Array.from({ length: this.cfg.cookHotWaterSlotCount }, () => null), // 2台目の湯煎器（クック編 C8）
       potSlots: Array.from({ length: this.cfg.potCount }, () => createPot(this.cfg.mixClicks)),
       ihBurners: Array.from({ length: this.cfg.ihBurnerCount }, () => null),
       thrownPots: [],
@@ -351,7 +352,7 @@ export class Game {
     for (const b of s.boilers) updateBoiler(b, dt, this.cfg);
     updateWasher(s.washer, dt);
     updateOven(s.oven, dt, this.cfg);
-    for (const pack of s.hotWater) if (pack) soakPack(pack, dt, this.cfg); // 熱湯に浸かっている間だけ温まる
+    for (const pack of [...s.hotWater, ...s.cookHotWater]) if (pack) soakPack(pack, dt, this.cfg); // 熱湯に浸かっている間だけ温まる（2台とも同じ動き）
     for (const pot of s.ihBurners) if (pot) updateHeat(pot, dt); // 加熱が進むのはIHに載っている間だけ
     for (const thrown of s.thrownPots) stepThrownPot(thrown, dt, this.world);
     this.spawnTickets();
@@ -1423,6 +1424,8 @@ export class Game {
       return next ? `先に${PIZZA_TOPPING_NAME[next]}を容器に入れる（ピザの具の容器を左クリック）` : null;
     }
     if (isPourHand(hand) && frame.kind === 'bakeDish') return pourHint(frame, hand);
+    const packHint = hand.kind === 'pack' && frame.kind === 'bakeDish' ? packPourHint(frame, hand) : null;
+    if (packHint) return packHint;
     if (hand.kind === 'bottle' && this.bakeBottlePlan(hand.id, { kind: 'workFrame', index })) return `右クリック：${BOTTLE_ACTION[hand.id]}`;
     // 焼く前の器に振るボトル（グランモラビア）が、いまは振れない理由
     const bottleLoad = hand.kind === 'bottle' ? BOTTLE_BAKE_LOAD[hand.id] : undefined;
@@ -2012,11 +2015,14 @@ export class Game {
       }
 
       case 'hotWaterSlot': {
-        const cell = s.hotWater[target.index];
+        // どちらの湯煎器か（unit 省略 = 1台目）。2台目（クック編 C8）も同じ動き。どのパックも、どちらの湯煎器でも温められる
+        const slots = (target.unit ?? 0) === 1 ? s.cookHotWater : s.hotWater;
+        if (target.index < 0 || target.index >= slots.length) return null;
+        const cell = slots[target.index];
         // 手に持っているパックを、空いている場所に1つ浸ける
         if (hand?.kind === 'pack' && !cell) {
           return () => {
-            s.hotWater[target.index] = hand.packs.pop()!;
+            slots[target.index] = hand.packs.pop()!;
             if (hand.packs.length === 0) s.hand = null;
           };
         }
@@ -2025,7 +2031,7 @@ export class Game {
           return () => {
             if (hand) hand.packs.push(cell);
             else s.hand = { kind: 'pack', packs: [cell] };
-            s.hotWater[target.index] = null;
+            slots[target.index] = null;
           };
         }
         return null;
@@ -2068,6 +2074,16 @@ export class Game {
         }
         // レードルのソース：板に乗せた焼き上がりにかける（クック編 C7）
         if (hand.kind === 'sauceLadle') return this.planLadle(target.index)?.run ?? null;
+        // 温まったパック（スープ2品。クック編 C8）：枠の器に、中身を1つ入れる（温まっていないパックは入らない。cookStock.ts の pourPack）
+        if (hand.kind === 'pack' && frame.kind === 'bakeDish') {
+          const poured = pourPack(frame, hand);
+          if (poured) {
+            return () => {
+              s.workFrames[target.index] = poured.dish;
+              s.hand = poured.hand;
+            };
+          }
+        }
         // 重ねて持つ具・冷凍の袋・入れ終わったチーズソースの容器：枠の器に、入るだけ入れる（cookStock.ts）
         if (isPourHand(hand)) {
           const poured = frame.kind === 'bakeDish' ? pourInto(frame, hand) : null;

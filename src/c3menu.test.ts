@@ -48,7 +48,9 @@ const C3_IDS = [...NEW_DORIAS, ...NEW_PIZZAS.map(([id]) => id)];
 const C6_IDS = ['popcornShrimp', 'potatoGrill', 'chorizo', 'spicyChicken', 'focaccia', 'cinnamonFocaccia', 'garlicFocaccia', 'tarakoFocaccia', 'cheeseFocaccia'];
 // C7（ステップJ）で鉄板焼き6品がさらに末尾に登録されたため、クックの品は23品（C7 の6品登録による。2026-11-15 承認）
 const C7_IDS = ['hamburg', 'italianHamburg', 'diavolaHamburg', 'mixedGrill', 'chickenDiavola', 'chickenCheese'];
-const ALL_COOK = ['milanoDoria', 'buffaloPizza', ...C3_IDS, ...C6_IDS, ...C7_IDS];
+// C8（ステップL）でスープ2品がさらに末尾に登録されたため、クックの品は25品（C8 の2品登録による。2026-11-16 承認）
+const C8_IDS = ['zuppa', 'minestrone'];
+const ALL_COOK = ['milanoDoria', 'buffaloPizza', ...C3_IDS, ...C6_IDS, ...C7_IDS, ...C8_IDS];
 
 // --- 設備 ---
 const pass: Target = { kind: 'servePass' };

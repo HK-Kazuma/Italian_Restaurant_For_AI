@@ -30,6 +30,9 @@ export type IngredientId =
   | 'dressing'
   | 'paprika'
   | 'cornSoup'
+  // クック編 C8：スープ2品のパック（湯煎器で温めて、作業枠の鉄のスープ皿に入れる。決まりは pack.ts の PACKS）
+  | 'zuppa' // たまねぎのズッパのパック
+  | 'minestrone' // ミネストローネのパック
   // クック用のボトル（クック編 C6。作業台に置ける。決まりは bottle.ts）
   | 'granMoravia' // グランモラビア（粉チーズの振り出し容器。焼く前のフォッカチオに振る）
   | 'cinnamon' // シナモンパウダー（焼き上がったフォッカチオに振る）
@@ -174,7 +177,10 @@ export type Boiler = {
   noodle: NoodleKind; // かごに入れた麺の種類
 };
 
-// 熱湯に浸けて温めるパック（カルボナーラ・コーンスープ）。soak は浸けた累計秒数、一定時間を超えたら warm
+// 湯煎器。0 = サラダ台と IH の間の1台目（state.hotWater）、1 = 3台目の具材台の天板の2台目（state.cookHotWater。クック編 C8）
+export type HotWaterUnit = 0 | 1;
+
+// 熱湯に浸けて温めるパック（カルボナーラ・コーンスープ・クック編 C8 のスープ2品）。soak は浸けた累計秒数、一定時間を超えたら warm
 export type Pack = {
   id: IngredientId;
   soak: number;
@@ -255,7 +261,10 @@ export type BakeLoadId =
   | 'granMoravia' // グランモラビア（ひと振り。ボトルを右クリックで振る）
   | 'egg' // 卵（1個。目玉焼き鉄板に入れる。焼けると、ヘラで1つずつすくえる目玉焼きになる。クック編 C4 はすくう仕組み、C7 で目玉焼きの行が表に入る）
   // クック編 C7（鉄板焼き）
-  | 'cheeseCup'; // チーズソースの小さい容器（ピザソースとピザチーズが入った物）。2回目に流す前の鉄板の空きにのせ、焼けたあと板の上でかける（bake.ts の CUP_FINISHES）
+  | 'cheeseCup' // チーズソースの小さい容器（ピザソースとピザチーズが入った物）。2回目に流す前の鉄板の空きにのせ、焼けたあと板の上でかける（bake.ts の CUP_FINISHES）
+  // クック編 C8（スープ2品）：温まったパックの中身（1杯分。pack.ts の PACKS の load）
+  | 'zuppa' // たまねぎのズッパ
+  | 'minestrone'; // ミネストローネ
 // のせた物と数（省略・0 = のっていない）
 export type BakeLoad = Partial<Record<BakeLoadId, number>>;
 // 流す前に必要な手入れ。scrape = ヘラではがす
@@ -400,7 +409,7 @@ export type Target =
   | { kind: 'potSlot'; index: number } // 鍋置き場の1か所
   | { kind: 'thrownPot'; id: number } // 投げて床・台に落ちている鍋（左クリックで拾う）
   | { kind: 'ihBurner'; index: number }
-  | { kind: 'hotWaterSlot'; index: number } // 熱湯に浸けるパックの置き場所
+  | { kind: 'hotWaterSlot'; index: number; unit?: HotWaterUnit } // 熱湯に浸けるパックの置き場所。unit = どちらの湯煎器か（省略 = 0。冷蔵庫の unit と同じ書き方）
   | { kind: 'ovenStock'; style: BakeStyle; dish?: string } // 具材台の焼き皿の山（クリックで手に取る）。doria = ドリアの山（焼く前のドリア。dish = どの品の山か。省略 = ミラノドリア）、pizza = 開発時だけ出す、テスト用のピザ系の皿の山
   | { kind: 'vesselStack'; style: BakeStyle } // 具材台の下の棚の、空の器の山（空のドリア皿・焼成パッド・鉄板・スープ皿など。左クリックで1枚取る、同じ空の器を持っていれば戻す）
   | { kind: 'workFrame'; index: number } // 1台目の具材台の作業枠（3つ）。3列系の器・受け台（下駄・板）・小皿を置いて、盛り付け・仕上げをする
@@ -480,6 +489,7 @@ export type GameState = {
   bottles: Record<BottleId, BottleSpot>; // 台の上のボトル
   bottleShakeAt: number | null; // 手に持ったボトルを最後に振った（かけた）ゲーム内時刻。振る動きの表示に使う
   hotWater: (Pack | null)[]; // 熱湯に浸けているパック（3×3の9か所、左上から横に数える）。null = 空き
+  cookHotWater: (Pack | null)[]; // 2台目の湯煎器（3台目の具材台の天板。2×2の4か所、左上から横に数える。クック編 C8）。null = 空き
   potSlots: (Pot | null)[]; // 鍋置き場。null = 空き
   ihBurners: (Pot | null)[];
   thrownPots: ThrownPot[]; // 投げた鍋（飛んでいる最中、または床・台に落ちている）

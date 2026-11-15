@@ -1,6 +1,7 @@
 import type { BagId } from './types';
 import { BAKE_FINISH_NAME, BAKE_LOAD_NAME, BAKE_VESSELS, baseOf, candidatesAt, canTakeBase, loadRoom, vesselCapacity, viewOf, whyNotLoad, type PrepYieldKey } from './bake';
 import type { GameConfig } from './config';
+import { packLoad } from './pack';
 import type { BakeFinishId, BakeLoadId, CookBinId, CupFill, FrozenBagId, Item, PizzaTopping, PrepStockId } from './types';
 
 // 冷凍の袋・ストック容器と、重ねて持つ具（クック編設計書 4.5 / C5）。
@@ -192,6 +193,43 @@ export function pourHint(dish: BakeDishItem, hand: PourHand): string {
   const verb = hand.kind === 'loadStack' && hand.id === 'egg' ? '割って落とす' : '入れる'; // 卵は、殻を割って中身を落とす
   const left = r.hand ? `左クリック：${name}を${r.moved}つ${verb}（入りきらない${hand.count - r.moved}つは手に残る）` : `左クリック：${name}を${r.moved}つ${verb}`;
   return flip ? `${left}（ふつうの向き）${right}` : left;
+}
+
+// --- 湯煎器で温めたパック（クック編 C8：スープ2品）---
+
+type PackHand = Extract<Item, { kind: 'pack' }>;
+
+// 手のパックのうち、いまの器に中身を入れられる温まったパックの位置（なければ -1）
+function pourablePack(dish: BakeDishItem, hand: PackHand): number {
+  return hand.packs.findIndex((p) => {
+    const load = packLoad(p.id);
+    return p.warm && load !== null && roomFor(dish, load) > 0;
+  });
+}
+
+// 手に持ったパックのうち、作業枠の焼き皿に中身を入れるパック（pack.ts の PACKS の load）。温まった物を1つ入れる（手のパックは1つ減る）。
+// 温まっていないパック・入らない器（中身の違う品・入れ終わった皿）は null（カルボナーラの鍋と同じく、温まっていないパックは入らない）
+export function pourPack(dish: BakeDishItem, hand: Item | null): PourResult | null {
+  if (hand?.kind !== 'pack') return null;
+  const i = pourablePack(dish, hand);
+  if (i < 0) return null;
+  const load = packLoad(hand.packs[i].id)!;
+  const packs = hand.packs.filter((_, k) => k !== i);
+  const loaded = { ...(dish.loaded ?? {}), [load]: (dish.loaded?.[load] ?? 0) + 1 };
+  return { dish: { ...dish, loaded }, hand: packs.length > 0 ? { kind: 'pack', packs } : null, moved: 1 };
+}
+
+// 焼き皿に入れるパックを持って、作業枠の器に視点を合わせたときの案内（焼き皿に入れないパックは null）
+export function packPourHint(dish: BakeDishItem, hand: PackHand): string | null {
+  const ids = [...new Set(hand.packs.map((p) => p.id))].filter((id) => packLoad(id) !== null);
+  if (ids.length === 0) return null;
+  const i = pourablePack(dish, hand);
+  if (i >= 0) return `左クリック：${BAKE_LOAD_NAME[packLoad(hand.packs[i].id)!].name}のパックの中身を入れる`;
+  if (!hand.packs.some((p) => p.warm)) return '入れられない（パックが温まっていない。湯煎器に浸けて温める）';
+  const load = packLoad(ids[0])!;
+  if (dish.state === 'burnt') return '焦げている（右クリックで捨てる）';
+  if (baseOf(dish) !== null) return '受け台に乗せた器には入れられない';
+  return `入れられない（${whyNotLoad(viewOf(dish), load, undefined, dish.state) ?? 'この器には入らない'}）`;
 }
 
 // --- ストック容器 ---

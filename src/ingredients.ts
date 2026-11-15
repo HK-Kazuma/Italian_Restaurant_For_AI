@@ -30,6 +30,8 @@ export const INGREDIENTS: Record<IngredientId, { name: string; color: number }> 
   dressing: { name: 'ドレッシング', color: 0xe6c36b },
   paprika: { name: 'パプリカパウダー', color: 0xd2491d },
   cornSoup: { name: 'コーンスープ', color: 0xf4d03f },
+  zuppa: { name: 'たまねぎのズッパ', color: 0xc9a77c }, // 薄茶（クック編 C8。透明の袋の中身の色）
+  minestrone: { name: 'ミネストローネ', color: 0xc8402c }, // 赤（クック編 C8）
   granMoravia: { name: 'グランモラビア', color: 0xf3e6b0 },
   cinnamon: { name: 'シナモンパウダー', color: 0x8a5a2b },
   garlicSauce: { name: 'ガーリックソース', color: 0xe9d9a0 },

@@ -32,6 +32,8 @@ const COOK_IDS = [
   'popcornShrimp', 'potatoGrill', 'chorizo', 'spicyChicken', 'focaccia', 'cinnamonFocaccia', 'garlicFocaccia', 'tarakoFocaccia', 'cheeseFocaccia',
   // --- C7（ステップJ）：C7 の6品登録による（2026-11-15 承認）---
   'hamburg', 'italianHamburg', 'diavolaHamburg', 'mixedGrill', 'chickenDiavola', 'chickenCheese',
+  // --- C8（ステップL）：C8 の2品登録による（2026-11-16 承認）。23 → 25品 ---
+  'zuppa', 'minestrone',
 ];
 const ticket = (id: number, menuId: string, arrivedAt = 0): Ticket => createTicket(id, getMenu(menuId), arrivedAt);
 const buffalo: PizzaBuild = { dough: true, sauce: true, cheese: true, mozz: MOZZ_TOTAL };

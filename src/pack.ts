@@ -1,23 +1,45 @@
 import type { GameConfig } from './config';
-import type { IngredientId, Item, Pack } from './types';
+import type { BakeLoadId, IngredientId, Item, Pack } from './types';
 
-// 熱湯で温めてから使うパック（カルボナーラ・コーンスープ）。熱湯に浸けた累計秒数が規定を超えると温まる（余温め）。
-// 熱湯に浸けるパックの種類を増やすときは warmTime に足す。
+// 熱湯で温めてから使うパック（カルボナーラ・コーンスープ・クック編 C8 のスープ2品）。熱湯に浸けた累計秒数が規定を超えると温まる（余温め）。
+// 熱湯に浸けるパックの種類を増やすときは PACKS に足す（パックの id で分岐しない）。
 
-type PackConfig = Pick<GameConfig, 'carbonaraWarmTime' | 'cornSoupWarmTime' | 'cornSoupStackMax' | 'carbonaraStackMax'>;
+type PackConfig = Pick<
+  GameConfig,
+  'carbonaraWarmTime' | 'cornSoupWarmTime' | 'cornSoupStackMax' | 'carbonaraStackMax' | 'zuppaWarmTime' | 'minestroneWarmTime' | 'cookSoupStackMax'
+>;
+type PackWarmKey = 'carbonaraWarmTime' | 'cornSoupWarmTime' | 'zuppaWarmTime' | 'minestroneWarmTime';
+type PackStackKey = 'cornSoupStackMax' | 'carbonaraStackMax' | 'cookSoupStackMax';
+
+// パックの表。warm = 温める秒数の設定値（config.ts）の名前、stack = 一度に手に持てる数の設定値の名前（省略 = 1つ）、
+// load = 作業枠の焼き皿に入れたときの中身（bake.ts の表の、のせる物。クック編 C8。省略 = 焼き皿には入れない）
+export const PACKS: Partial<Record<IngredientId, { warm: PackWarmKey; stack?: PackStackKey; load?: BakeLoadId }>> = {
+  carbonaraSauce: { warm: 'carbonaraWarmTime', stack: 'carbonaraStackMax' },
+  cornSoup: { warm: 'cornSoupWarmTime', stack: 'cornSoupStackMax' },
+  zuppa: { warm: 'zuppaWarmTime', stack: 'cookSoupStackMax', load: 'zuppa' },
+  minestrone: { warm: 'minestroneWarmTime', stack: 'cookSoupStackMax', load: 'minestrone' },
+};
 
 // 温めが必要なパックなら必要秒数、そうでなければ null（普通の具材）
 export function warmTime(id: IngredientId, cfg: PackConfig): number | null {
-  if (id === 'carbonaraSauce') return cfg.carbonaraWarmTime;
-  if (id === 'cornSoup') return cfg.cornSoupWarmTime;
-  return null;
+  const p = PACKS[id];
+  return p ? cfg[p.warm] : null;
 }
 
-// 一度に手に持てる数。コーンスープは最大5つ、カルボナーラは最大3つ。ほかのパックは1つ
+// 一度に手に持てる数。コーンスープは最大5つ、カルボナーラは最大3つ、スープ2品は最大3つ（仮）。ほかのパックは1つ
 export function stackLimit(id: IngredientId, cfg: PackConfig): number {
-  if (id === 'cornSoup') return cfg.cornSoupStackMax;
-  if (id === 'carbonaraSauce') return cfg.carbonaraStackMax;
-  return 1;
+  const key = PACKS[id]?.stack;
+  return key ? cfg[key] : 1;
+}
+
+// パックを作業枠の焼き皿に入れたときの中身（入れないパックは null）
+export function packLoad(id: IngredientId): BakeLoadId | null {
+  return PACKS[id]?.load ?? null;
+}
+
+// その中身になるパック（なければ null）
+export function packOfLoad(load: BakeLoadId): IngredientId | null {
+  return (Object.keys(PACKS) as IngredientId[]).find((id) => PACKS[id]?.load === load) ?? null;
 }
 
 export function createPack(id: IngredientId): Pack {

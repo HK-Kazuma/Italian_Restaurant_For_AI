@@ -17,6 +17,13 @@ export type GameConfig = {
   cornSoupStackMax: number; // コーンスープのパックを一度に手に持てる数
   carbonaraStackMax: number; // カルボナーラのパックを一度に手に持てる数（ほかのパックは1つ）
 
+  // 2台目の湯煎器（クック編 C8。3台目の具材台の天板。動きは1台目と同じ）とスープ2品のパック
+  cookHotWaterColumns: number; // パックを浸けられる場所の列数（2×2 = 4か所なら 2）
+  cookHotWaterSlotCount: number; // パックを浸けられる数（仮）
+  zuppaWarmTime: number; // たまねぎのズッパのパックを温める秒数（仮）
+  minestroneWarmTime: number; // ミネストローネのパックを温める秒数（仮）
+  cookSoupStackMax: number; // スープ2品のパックを一度に手に持てる数（同じ種類だけ。仮）
+
   // ジェットオーブン（ベルトコンベア式。左の台のさらに左）。皿を入口に置いてから、出口に出てくるまでの秒数
   ovenUpperTime: number; // 上段（ピザ系はこの時間で焼き上がる。ドリア系は、2周すると焼き上がる）
   ovenLowerTime: number; // 下段（ドリア系はこの時間で焼き上がる。ピザ系を流すと焦げる）
@@ -86,6 +93,11 @@ export const DEFAULT_CONFIG: GameConfig = {
   cornSoupWarmTime: 5,
   cornSoupStackMax: 5,
   carbonaraStackMax: 3,
+  cookHotWaterColumns: 2,
+  cookHotWaterSlotCount: 4, // 仮
+  zuppaWarmTime: 5, // 仮
+  minestroneWarmTime: 5, // 仮
+  cookSoupStackMax: 3, // 仮
 
   ovenUpperTime: 30, // 標準の値（5分のゲームに合わせた長さ。40秒は将来のリアルモード用）
   ovenLowerTime: 60, // 標準の値（80秒は将来のリアルモード用）。必ず上段の2倍にする（上段2周 = 下段1周。ドリアはこの時間で焼き上がる）
