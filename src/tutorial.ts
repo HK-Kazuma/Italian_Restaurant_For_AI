@@ -1,6 +1,6 @@
-import { BAKE_BASES, BAKE_LOAD_NAME, baseOf, getBakeDish, type BakeDish, type LoadSpec } from './bake';
+import { BAKE_BASES, BAKE_CARE_NAME, BAKE_FINISH_NAME, BAKE_LOAD_NAME, CUP_FINISHES, SCOOP_LOADS, SIDE_TABLE, baseOf, fullLoad, getBakeDish, scoopOf, stageRange, type BakeDish, type LoadSpec } from './bake';
 import { BOTTLE_ACTION, BOTTLE_BAKE_FINISH, BOTTLE_BAKE_LOAD, BOTTLE_FRIDGE_ITEM, BOTTLE_IDS, BOTTLE_PLATE, isFridgeBottle } from './bottle';
-import { COOK_BINS, COOK_BIN_IDS, FLIP_LOADS, FROZEN_BAGS, FROZEN_BAG_IDS, SOURCE_RIGHT_TAKE } from './cookStock';
+import { COOK_BINS, COOK_BIN_IDS, CUP_FILLS, FLIP_LOADS, FROZEN_BAGS, FROZEN_BAG_IDS, SOURCE_RIGHT_TAKE, cupNext } from './cookStock';
 import type { GameConfig } from './config';
 import { FRIDGE_ITEM_IDS } from './fridge';
 import { INGREDIENTS } from './ingredients';
@@ -11,7 +11,7 @@ import { warmTime } from './pack';
 import { isNoodle } from './pot';
 import { getMenu, type MenuItem } from './recipe';
 import { TRAY_FRIDGE_ITEM, TRAY_NAME, TRAY_ZONE, freeTraySpots, isFreeTray } from './tray';
-import type { BakeFinishId, BakeLoadId, BakeStyle, BottleId, CookBinId, FridgeBottleId, FridgeItemId, FridgeUnit, FrozenBagId, GameState, IngredientId, Item, NoodleKind, OvenDeck, OvenDish, PizzaBuild, PizzaTopping, Pot, SurfaceId, Target, TrayId } from './types';
+import type { BakeBase, BakeCare, BakeFinishId, BakeLoadId, BakeStyle, CupFill, BottleId, CookBinId, FridgeBottleId, FridgeItemId, FridgeUnit, FrozenBagId, GameState, IngredientId, Item, NoodleKind, OvenDeck, OvenDish, PizzaBuild, PizzaTopping, Pot, SurfaceId, Target, TrayId } from './types';
 
 // チュートリアル：練習キッチンで、選んだメニューを「次はここ」と案内されながら作る。
 //
@@ -685,61 +685,114 @@ function makeKit(menu: MenuItem, cfg: GameConfig) {
   // 作業枠で仕上げたドリアを持ち上げて、提供台に出す
   const serveDoriaFromFrame = serveBaked(getaDishInHand, (s) => ({ kind: 'workFrame', index: Math.max(0, frameWithGetaDish(s)) }));
 
-  // 焼き物の表（bake.ts）の1行から、工程を作る（クック編 C6。品ごとに手で書かない）。作れない形の品は null（tableRecipePlan を見る）
+  // 焼き物の表（bake.ts）の1行から、工程を作る（クック編 C6・C10 の前半。品ごとに手で書かない）。作れない形の品は null（tableRecipePlan を見る）
   const fromTable = (dish: BakeDish): TutorialStep[] | null => {
     const plan = tableRecipePlan(dish);
     return plan ? tableSteps(dish, plan) : null;
   };
 
-  // 表から作る工程の並び：
-  //   空の器を作業枠に置く → のせる物を、表の順に（袋・ストック容器・逆さまに入れる・容器を右クリック・ボトル）→ 流す →（小皿の品は、焼いている間に小皿を作業枠に置く）→ 焼き上がりを待つ →
-  //   受け台（下駄・板）に乗せる／小皿に移して、空いた器を棚に戻す →（仕上げのある品は、作業枠で）仕上げのボトル → 提供
-  const tableSteps = (dish: BakeDish, plan: TablePlan): TutorialStep[] => {
+  type Dish = Extract<Item, { kind: 'bakeDish' }>;
+  const frameAt = (i: number): Target => ({ kind: 'workFrame', index: Math.max(0, i) });
+  const freeFrameAt = (s: GameState): Target => frameAt(s.workFrames.findIndex((f) => f === null));
+
+  // 表の1行（品・付け合わせ）の器が、どこまで進んだかを、状態だけから読む（品名は見ない。器の種類・段階・焼け具合・受け台で決まる。
+  // ハンバーグ3品のように1回目が同じ品も、同じ読み方になる）。
+  // 段（level）：2k = k 段階目を流す前（手入れ・のせる物）、2k+1 = k 段階目を流した（ベルトの上・焼いた器を持っている）、2N = 受け台・小皿に乗せた（N = 段階の数）
+  const vesselTrack = (dish: BakeDish) => {
+    const style = dish.vessel;
+    const N = dish.stages.length;
+    const mine = (x: Item | null | undefined): x is Dish => x?.kind === 'bakeDish' && x.style === style;
+    const isBlankEmpty = (x: Item | null | undefined) => mine(x) && x.state === 'raw' && (x.stage ?? 0) === 0 && x.blank === true && !x.loaded;
+    // 受け台に乗せた・小皿に移した、焼き上がり
+    const finished = (x: Item | null | undefined) => (x?.kind === 'bakePlate' && x.from === style) || (mine(x) && baseOf(x) !== null);
+    const levelOf = (x: Item | null | undefined): number => {
+      if (finished(x)) return 2 * N;
+      if (!mine(x)) return -1;
+      const st = x.stage ?? 0;
+      if (x.state === 'raw' && st === 0) return 0;
+      if (x.state === 'baked') return st < N - 1 ? 2 * (st + 1) : 2 * N - 1;
+      return 2 * st + 1; // 生焼け・焦げ（焼いた器）
+    };
+    // 手・やっとこ・作業枠・3台目の置き場の物（ベルトの上は別に見る）
+    const around = (s: GameState): Item[] =>
+      [s.hand, s.tool?.kind === 'tongs' ? s.tool.dish : null, ...s.workFrames, ...s.panRests].filter((x): x is Item => x !== null && x !== undefined);
+    // いちばん先まで進んだ器の段（提供済みなら Infinity）
+    const level = (s: GameState): number => {
+      if (s.served > 0) return Infinity;
+      let max = -1;
+      for (const x of around(s)) max = Math.max(max, levelOf(x));
+      for (const deck of OVEN_DECKS) for (const d of s.oven.decks[deck]) if (d.style === style) max = Math.max(max, 2 * (d.stage ?? 0) + 1);
+      return max;
+    };
+    // k 段階目を流す前の器がある作業枠（なければ -1）。手に持っている、その器（山から取ったままの空の器は数えない）
+    const loadFrame = (s: GameState, k: number) => s.workFrames.findIndex((f) => levelOf(f) === 2 * k);
+    const loadHand = (s: GameState, k: number): Dish | null => (mine(s.hand) && levelOf(s.hand) === 2 * k && !isBlankEmpty(s.hand) ? s.hand : null);
+    const loadTarget = (s: GameState, k: number): Dish | null => {
+      const i = loadFrame(s, k);
+      return i >= 0 ? (s.workFrames[i] as Dish) : loadHand(s, k);
+    };
+    const outlet = (s: GameState, deck: OvenDeck) => outletOf(deck, s.oven.decks[deck].find((d) => d.style === style));
+    const finishedFrame = (s: GameState) => s.workFrames.findIndex((f) => finished(f));
+    const based = (s: GameState) => finished(s.hand) || finishedFrame(s) >= 0 || s.served > 0;
+    return { style, N, mine, isBlankEmpty, finished, levelOf, level, loadFrame, loadHand, loadTarget, outlet, finishedFrame, based };
+  };
+  type Track = ReturnType<typeof vesselTrack>;
+
+  // k 段階目を流すまでの工程：（k = 0）空の器を作業枠に置く／（k ≥ 1）前の段階で焼けた器を出口から取って作業枠に置く
+  //   → 手入れ（ヘラではがす）→ のせる物（表の順）→ 流す
+  const stageSteps = (dish: BakeDish, plan: TablePlan, t: Track, k: number): TutorialStep[] => {
     const style = dish.vessel;
     const vesselName = BAKE_DISHES[style].name;
-    const base = dish.finish.base;
-    type Dish = Extract<Item, { kind: 'bakeDish' }>;
-    const mine = (x: Item | null | undefined): x is Dish => x?.kind === 'bakeDish' && x.style === style;
-    const isRaw = (x: Item | null | undefined): x is Dish => mine(x) && x.state === 'raw' && baseOf(x) === null;
-    const isBlankEmpty = (x: Item | null | undefined) => isRaw(x) && x.blank === true && !x.loaded;
-    // 作業枠の、焼く前の器（なければ -1）。手に持っている焼く前の器（中身のある物）
-    const rawFrame = (s: GameState) => s.workFrames.findIndex((f) => isRaw(f));
-    const rawNow = (s: GameState): Dish | null => {
-      const i = rawFrame(s);
-      if (i >= 0) return s.workFrames[i] as Dish;
-      return isRaw(s.hand) && !isBlankEmpty(s.hand) ? s.hand : null;
-    };
-    const freeFrame = (s: GameState) => Math.max(0, s.workFrames.findIndex((f) => f === null));
-    const frameAt = (i: number): Target => ({ kind: 'workFrame', index: Math.max(0, i) });
-    // 受け台に乗せた・小皿に移した、焼き上がり（手か作業枠）
-    const finished = (x: Item | null | undefined) => (x?.kind === 'bakePlate' && x.from === style) || (mine(x) && baseOf(x) !== null);
-    const finishedFrame = (s: GameState) => s.workFrames.findIndex((f) => finished(f));
-    const based = (s: GameState) => finished(s.hand) || finishedFrame(s) >= 0 || served(s);
-    // 流したあと（ベルトの上・焼いた器を持っている・受け台か小皿まで進んだ）
-    const cookedOrLater = (s: GameState) => dishOnBelt(s, style) !== null || (mine(s.hand) && s.hand.cooked > 0) || based(s);
-    const loadedOf = (s: GameState, id: BakeLoadId) => rawNow(s)?.loaded?.[id] ?? 0;
-    const emptyPlateFrame = (s: GameState) => s.workFrames.findIndex((f) => f?.kind === 'plate' && f.style === 'small' && f.contents.length === 0);
-    const outlet = (s: GameState) => outletOf(plan.deck, s.oven.decks[plan.deck].find((d) => d.style === style));
+    const stage = plan.stages[k];
     const steps: TutorialStep[] = [];
+    const past = (s: GameState) => t.level(s) > 2 * k; // この段階を流した（または、もっと先まで進んだ）
+    const frameOf = (s: GameState) => frameAt(t.loadFrame(s, k));
 
-    // 1. 空の器を棚の山から取って、作業枠に置く
-    steps.push(
-      carry({
-        label: `棚の${OVEN_STOCK_NAME[style]}から${vesselName}を取って、作業枠に置く`,
-        from: () => ({ kind: 'vesselStack', style }),
-        holding: (s) => isBlankEmpty(s.hand),
-        to: (s) => frameAt(freeFrame(s)),
-        done: (s) => rawFrame(s) >= 0 || rawNow(s) !== null || cookedOrLater(s),
-        hint: (_s, holding) => (holding ? '作業枠（1台目の具材台の、部屋の中央側の縁）の空きを左クリックで置く' : null),
-      }),
-    );
+    if (k === 0) {
+      steps.push(
+        carry({
+          label: `棚の${OVEN_STOCK_NAME[style]}から${vesselName}を取って、作業枠に置く`,
+          from: () => ({ kind: 'vesselStack', style }),
+          holding: (s) => t.isBlankEmpty(s.hand),
+          to: freeFrameAt,
+          done: (s) => t.loadFrame(s, 0) >= 0 || t.loadHand(s, 0) !== null || past(s),
+          hint: (_s, holding) => (holding ? '作業枠（1台目の具材台の、部屋の中央側の縁）の空きを左クリックで置く' : null),
+        }),
+      );
+    } else {
+      const deck = plan.stages[k - 1].deck;
+      steps.push(
+        carry({
+          label: `${k}回目が焼けた${vesselName}を出口から取って、作業枠に置く`,
+          from: (s) => t.outlet(s, deck),
+          holding: (s) => t.loadHand(s, k) !== null,
+          to: freeFrameAt,
+          done: (s) => t.loadFrame(s, k) >= 0 || past(s),
+          hint: (_s, holding) => (holding ? '作業枠の空きを左クリックで置く' : `出口の${vesselName}を左クリックで取る（チュートリアル中は、素手で取れる）`),
+        }),
+      );
+      // 手入れ（チュートリアル中は熱い器の決まりがオフなので、手が空の左クリックでできる。game.ts の作業枠の左クリック）
+      for (const care of stage.cares) {
+        steps.push({
+          label: `作業枠の${vesselName}を、${BAKE_CARE_NAME[care].name}（手が空の左クリック）`,
+          at: (s) => (t.loadFrame(s, k) >= 0 ? frameOf(s) : freeFrameAt(s)),
+          done: (s) => (t.loadTarget(s, k)?.cares ?? []).includes(care) || past(s),
+          hint: (s) => handBusy(s) ?? `作業枠の${vesselName}に視点を合わせて、手が空のまま左クリック`,
+        });
+      }
+    }
 
-    // 2. のせる物（表の順）
-    for (const { spec, source } of plan.loads) {
+    // のせる物（表の順）。数は、前の段階までにのせた物も含めて数える
+    const upTo = stageRange(dish, k).max;
+    for (const { spec, source } of stage.loads) {
       const name = BAKE_LOAD_NAME[spec.id];
       const amount = `${spec.count > 1 ? spec.count : ''}${spec.count > 1 ? name.unit : ''}`;
-      const done = (s: GameState) => loadedOf(s, spec.id) >= spec.count || cookedOrLater(s);
-      const progress = spec.count > 1 ? (s: GameState) => `${Math.min(spec.count, loadedOf(s, spec.id))}/${spec.count}` : undefined;
+      const want = upTo[spec.id] ?? spec.count;
+      const before = want - spec.count;
+      const loadedOf = (s: GameState) => t.loadTarget(s, k)?.loaded?.[spec.id] ?? 0;
+      const done = (s: GameState) => loadedOf(s) >= want || past(s);
+      const left = (s: GameState) => want - loadedOf(s);
+      const progress = spec.count > 1 ? (s: GameState) => `${Math.min(spec.count, Math.max(0, loadedOf(s) - before))}/${spec.count}` : undefined;
       if (source.kind === 'bottle') {
         const id = source.id;
         const holding = (s: GameState) => s.hand?.kind === 'bottle' && s.hand.id === id;
@@ -748,12 +801,36 @@ function makeKit(menu: MenuItem, cfg: GameConfig) {
           label: `${BOTTLE_ACTION[id]}（作業枠の${vesselName}に1回）`,
           at: (s) => {
             if (!holding(s)) return { kind: 'bottle', id };
-            return loadedOf(s, spec.id) >= spec.count || cookedOrLater(s) ? { kind: 'surfaceSpot', surface: spot.surface, x: spot.x, z: spot.z } : frameAt(rawFrame(s));
+            return done(s) ? { kind: 'surfaceSpot', surface: spot.surface, x: spot.x, z: spot.z } : frameOf(s);
           },
-          done: (s) => (done(s) && s.bottles[id] !== null) || served(s),
+          done: (s) => (done(s) && s.bottles[id] !== null) || s.served > 0,
           hint: (s) => {
             if (!holding(s)) return s.hand ? '手がふさがっています（置くか、右クリックで捨てる）' : 'ボトルを左クリックで取る';
             return done(s) ? '元の場所に置く（作業台の上を左クリック）' : `作業枠の${vesselName}に視点を合わせて、右クリック（1回）`;
+          },
+        });
+        continue;
+      }
+      if (source.kind === 'cup') {
+        // 小さい容器を取り、ピザの具の容器で中身を入れて（表の CUP_FILLS の順）、器の空きにのせる
+        const binTarget: Target = { kind: 'cookBin', id: source.id };
+        const fillNames = source.fills.map((f) => PIZZA_TOPPING_NAME[f]).join(' → ');
+        steps.push({
+          label: `${COOK_BINS[source.id].name}を取り、${fillNames}を入れて、作業枠の${vesselName}の空きにのせる`,
+          at: (s) => {
+            if (s.hand?.kind !== 'sauceCup') return binTarget;
+            if (CUP_FILLS[s.hand.fill].load === spec.id) return frameOf(s);
+            const next = cupNext(s.hand.fill);
+            return next ? { kind: 'pizzaSource', id: next } : binTarget;
+          },
+          done,
+          hint: (s) => {
+            if (s.hand?.kind === 'sauceCup') {
+              if (CUP_FILLS[s.hand.fill].load === spec.id) return `作業枠の${vesselName}を左クリックで、空きにのせる`;
+              const next = cupNext(s.hand.fill);
+              return next ? `${PIZZA_TOPPING_NAME[next]}の容器を左クリックで、小さい容器に入れる` : null;
+            }
+            return handBusy(s) ?? `${COOK_BINS[source.id].name}を左クリックで、空の小さい容器を1つ取る`;
           },
         });
         continue;
@@ -766,49 +843,122 @@ function makeKit(menu: MenuItem, cfg: GameConfig) {
       const verb = source.kind === 'flip' ? `作業枠の${vesselName}を右クリックで${FLIP_LOADS[handLoad]!.verb}` : `作業枠の${vesselName}に入れる`;
       steps.push({
         label: source.kind === 'flip' ? `${BAKE_LOAD_NAME[handLoad].name}を取って、${verb}` : `${name.name}${amount ? `を${amount}` : 'を'}取って、${verb}`,
-        at: (s) => (inHand(s) >= spec.count - loadedOf(s, spec.id) ? frameAt(rawFrame(s)) : fromTarget),
+        at: (s) => (inHand(s) >= left(s) ? frameOf(s) : fromTarget),
         done,
         progress,
         hint: (s) => {
-          if (inHand(s) >= spec.count - loadedOf(s, spec.id)) {
+          if (inHand(s) >= left(s)) {
             return source.kind === 'flip' ? `作業枠の${vesselName}に視点を合わせて、右クリック（左クリックだと、ふつうの向きになる）` : `作業枠の${vesselName}を左クリックで入れる`;
           }
           if (s.hand && inHand(s) === 0) return '手がふさがっています（置くか、右クリックで捨てる）';
           if (source.kind === 'rightTake') return '容器を右クリックで取る（左クリックの1杯ではない）';
-          return spec.count > 1 ? `左クリックするたびに1つずつ重ねて持てる（あと${spec.count - loadedOf(s, spec.id) - inHand(s)}）` : null;
+          return spec.count > 1 ? `左クリックするたびに1つずつ重ねて持てる（あと${left(s) - inHand(s)}）` : null;
         },
       });
     }
 
-    // 3. 流す
+    // 流す
     steps.push(
       carry({
-        label: `${vesselName}を持ち上げて、オーブンの${OVEN_DECK_NAME[plan.deck]}に流す`,
-        from: (s) => frameAt(rawFrame(s)),
-        holding: (s) => isRaw(s.hand) && !isBlankEmpty(s.hand),
-        to: () => ({ kind: 'ovenInlet', deck: plan.deck }),
-        done: cookedOrLater,
+        label: `${vesselName}を持ち上げて、オーブンの${OVEN_DECK_NAME[stage.deck]}に流す${t.N > 1 ? `（${k + 1}回目）` : ''}`,
+        from: frameOf,
+        holding: (s) => t.loadHand(s, k) !== null,
+        to: () => ({ kind: 'ovenInlet', deck: stage.deck }),
+        done: past,
       }),
     );
+    return steps;
+  };
 
-    // 4. 小皿の品は、焼いている間に小皿を作業枠に置いておく
+  // k 段階目が焼き上がるのを待つ（最後の段階は、受け台・小皿に乗せたら先へ）
+  const stageWait = (plan: TablePlan, t: Track, k: number): TutorialStep =>
+    waitBake(t.style, plan.stages[k].deck, (s) => (k < t.N - 1 ? t.level(s) >= 2 * (k + 1) : t.based(s)));
+
+  // 付け合わせ（ヘラですくう物。目玉焼き）の器が焼けるのを待って、出口から取って作業枠に置く。used = もう仕上げにのせ始めた
+  const sideOutSteps = (side: BakeDish, sidePlan: TablePlan, st: Track, used: (s: GameState) => boolean): TutorialStep[] => {
+    const deck = sidePlan.stages[sidePlan.stages.length - 1].deck;
+    const name = BAKE_DISHES[side.vessel].name;
+    const placed = (s: GameState) => s.workFrames.some((f) => st.mine(f) && scoopOf(f) !== null) || s.panRests.some((f) => st.mine(f) && scoopOf(f) !== null);
+    const beyond = (s: GameState) => placed(s) || used(s);
+    const wait = waitBake(side.vessel, deck, beyond);
+    return [
+      { ...wait, label: `${name}が${wait.label}` },
+      carry({
+        label: `焼けた${name}を出口から取って、作業枠に置く`,
+        from: (s) => st.outlet(s, deck),
+        holding: (s) => st.mine(s.hand) && s.hand.state === 'baked',
+        to: freeFrameAt,
+        done: beyond,
+        hint: (_s, holding) => (holding ? '作業枠の空きを左クリックで置く' : `出口の${name}を左クリックで取る（チュートリアル中は、素手で取れる）`),
+      }),
+    ];
+  };
+
+  // 表から作る工程の並び：
+  //   1段階目（空の器を作業枠に置く → のせる物を、表の順に（袋・ストック容器・逆さまに入れる・容器を右クリック・ボトル・チーズソースの容器）→ 流す）→
+  //   （ヘラですくう付け合わせのある品は、その器も同じように作って流す）→（小皿の品は、焼いている間に小皿を作業枠に置く）→ 焼き上がりを待つ →
+  //   （2段階目からは：出口から取って作業枠に置く →（付け合わせの器も出口から取る）→ 手入れ → のせる物 → 流す → 待つ）→
+  //   受け台（下駄・板）に乗せる／小皿に移して、空いた器を棚に戻す →（仕上げのある品は、作業枠で）仕上げ（表の finish.extras の順。ボトル・レードル・容器・ヘラ）→ 提供
+  const tableSteps = (dish: BakeDish, plan: TablePlan): TutorialStep[] => {
+    const style = dish.vessel;
+    const vesselName = BAKE_DISHES[style].name;
+    const base = dish.finish.base;
+    const t = vesselTrack(dish);
+    const lastDeck = plan.stages[t.N - 1].deck;
+    const { mine, finished, finishedFrame, based } = t;
+    const isBlankEmpty = t.isBlankEmpty;
+    const emptyPlateFrame = (s: GameState) => s.workFrames.findIndex((f) => f?.kind === 'plate' && f.style === 'small' && f.contents.length === 0);
+    const outlet = (s: GameState) => t.outlet(s, lastDeck);
+    // 仕上げ中の料理（作業枠、なければ手）と、そこに入った仕上げの数
+    const finishedItem = (s: GameState): Item | null => {
+      const i = finishedFrame(s);
+      if (i >= 0) return s.workFrames[i];
+      return finished(s.hand) ? s.hand : null;
+    };
+    const finishCount = (s: GameState, f: BakeFinishId) => {
+      const x = finishedItem(s);
+      return x?.kind === 'bakeDish' || x?.kind === 'bakePlate' ? (x.finishes ?? []).filter((y) => y === f).length : 0;
+    };
+    const onFrame = (s: GameState) => frameAt(finishedFrame(s));
+    // ヘラですくう付け合わせ（あれば、その表の行と工程の作り方）
+    const scoop = plan.finishes.map((f) => f.source).find((x): x is Extract<FinishSource, { kind: 'scoop' }> => x.kind === 'scoop') ?? null;
+    const sideTrack = scoop ? vesselTrack(scoop.side) : null;
+    const scoopUsed = (s: GameState) =>
+      scoop !== null && (finishCount(s, SCOOP_LOADS[scoop.load]!) > 0 || (s.tool?.kind === 'spatula' && s.tool.scoop === SCOOP_LOADS[scoop.load]) || s.served > 0);
+    const sideOut = scoop && sideTrack ? sideOutSteps(scoop.side, scoop.plan, sideTrack, scoopUsed) : [];
+    const steps: TutorialStep[] = [];
+
+    // 1. 1段階目（空の器 → のせる物 → 流す）
+    steps.push(...stageSteps(dish, plan, t, 0));
+    // 付け合わせの器も、1段階目を焼いている間に作って流す
+    if (scoop && sideTrack) {
+      for (let k = 0; k < scoop.plan.stages.length; k++) steps.push(...stageSteps(scoop.side, scoop.plan, sideTrack, k));
+    }
+
+    // 2. 小皿の品は、焼いている間に小皿を作業枠に置いておく
     if (base === 'smallPlate') {
       steps.push(
         carry({
           label: `${BAKE_BASES.smallPlate.name}を取って、作業枠に置く`,
           from: () => ({ kind: 'plateStack', style: 'small' }),
           holding: (s) => s.hand?.kind === 'plate' && s.hand.style === 'small' && s.hand.contents.length === 0,
-          to: (s) => frameAt(freeFrame(s)),
+          to: freeFrameAt,
           done: (s) => emptyPlateFrame(s) >= 0 || based(s),
           hint: (_s, holding) => (holding ? '作業枠の空きを左クリックで置く' : '提供台の左の小皿の山から、小皿を1枚取る'),
         }),
       );
     }
 
-    // 5. 焼き上がりを待つ
-    steps.push(waitBake(style, plan.deck, based));
+    // 3. 焼き上がりを待つ。2段階目からは、出口から取って作業枠に置き、手入れ・のせる物のあと、また流して待つ
+    steps.push(stageWait(plan, t, 0));
+    for (let k = 1; k < t.N; k++) {
+      const [takeOut, ...rest] = stageSteps(dish, plan, t, k);
+      steps.push(takeOut);
+      if (k === 1) steps.push(...sideOut); // 付け合わせの器は、同じころに焼き上がる。ベルトに残さず、先に作業枠へ
+      steps.push(...rest, stageWait(plan, t, k));
+    }
 
-    // 6. 受け台に乗せる／小皿に移す
+    // 4. 受け台に乗せる／小皿に移す
     if (base === 'smallPlate') {
       steps.push(
         carry({
@@ -826,7 +976,7 @@ function makeKit(menu: MenuItem, cfg: GameConfig) {
           from: () => ({ kind: 'vesselStack', style }),
           holding: holdingBlank,
           to: () => ({ kind: 'vesselStack', style }),
-          done: (s) => (based(s) && !holdingBlank(s)) || served(s),
+          done: (s) => (based(s) && !holdingBlank(s)) || s.served > 0,
         }),
       );
     } else {
@@ -842,48 +992,92 @@ function makeKit(menu: MenuItem, cfg: GameConfig) {
           return handBusy(s) ?? `提供台の左の${baseName}の山から、1枚取る`;
         },
       });
-      // 仕上げのある品は、作業枠に置いてから振る
+      // 仕上げのある品は、作業枠に置いてから仕上げる
       if ((dish.finish.extras ?? []).length > 0) {
         steps.push(
           carry({
             label: `${baseName}に乗せた${vesselName}を、作業枠に置く`,
             from: () => stack,
             holding: (s) => finished(s.hand),
-            to: (s) => frameAt(freeFrame(s)),
-            done: (s) => finishedFrame(s) >= 0 || served(s),
+            to: freeFrameAt,
+            done: (s) => finishedFrame(s) >= 0 || s.served > 0,
           }),
         );
       }
     }
+    if (t.N === 1) steps.push(...sideOut); // 1段階の品の付け合わせは、仕上げの前に作業枠へ
 
-    // 7. 仕上げ（ボトル。表の finish.extras の順）
-    for (const { finish, bottle } of plan.finishes) {
-      const holding = (s: GameState) => s.hand?.kind === 'bottle' && s.hand.id === bottle;
-      const onDish = (s: GameState) => {
-        const i = finishedFrame(s);
-        const f = i >= 0 ? s.workFrames[i] : null;
-        return (f?.kind === 'bakePlate' || f?.kind === 'bakeDish') && (f.finishes ?? []).includes(finish);
-      };
-      const spot = BOTTLE_HOME[bottle];
-      steps.push({
-        label: `${BOTTLE_ACTION[bottle]}（作業枠の料理に1回）`,
-        at: (s) => {
-          if (!holding(s)) return { kind: 'bottle', id: bottle };
-          return onDish(s) ? { kind: 'surfaceSpot', surface: spot.surface, x: spot.x, z: spot.z } : frameAt(finishedFrame(s));
-        },
-        done: (s) => (onDish(s) && s.bottles[bottle] !== null) || served(s),
-        hint: (s) => {
-          if (!holding(s)) return s.hand ? '手がふさがっています（置くか、右クリックで捨てる）' : 'ボトルを左クリックで取る';
-          return onDish(s) ? '元の場所に置く（作業台の上を左クリック）' : '作業枠の料理に視点を合わせて、右クリック（1回だけ。2回以上は注文ミス）';
-        },
-      });
-    }
+    // 5. 仕上げ（表の finish.extras の順）。同じ仕上げが2回あれば、2回目は2つ目として数える
+    plan.finishes.forEach(({ finish, source }, idx) => {
+      const need = plan.finishes.slice(0, idx + 1).filter((x) => x.finish === finish).length;
+      const enough = (s: GameState) => finishCount(s, finish) >= need;
+      const fname = BAKE_FINISH_NAME[finish];
+      if (source.kind === 'bottle') {
+        const bottle = source.id;
+        const holding = (s: GameState) => s.hand?.kind === 'bottle' && s.hand.id === bottle;
+        const spot = BOTTLE_HOME[bottle];
+        steps.push({
+          label: `${BOTTLE_ACTION[bottle]}（作業枠の料理に1回）`,
+          at: (s) => {
+            if (!holding(s)) return { kind: 'bottle', id: bottle };
+            return enough(s) ? { kind: 'surfaceSpot', surface: spot.surface, x: spot.x, z: spot.z } : onFrame(s);
+          },
+          done: (s) => (enough(s) && s.bottles[bottle] !== null) || s.served > 0,
+          hint: (s) => {
+            if (!holding(s)) return s.hand ? '手がふさがっています（置くか、右クリックで捨てる）' : 'ボトルを左クリックで取る';
+            return enough(s) ? '元の場所に置く（作業台の上を左クリック）' : '作業枠の料理に視点を合わせて、右クリック（1回だけ。2回以上は注文ミス）';
+          },
+        });
+      } else if (source.kind === 'ladle') {
+        const bin = source.id;
+        const holding = (s: GameState) => s.hand?.kind === 'sauceLadle' && s.hand.id === finish;
+        steps.push({
+          label: `${fname}をレードルで1杯取って、作業枠の料理にかける`,
+          at: (s) => (holding(s) ? onFrame(s) : { kind: 'cookBin', id: bin }),
+          done: (s) => enough(s) || s.served > 0,
+          hint: (s) => (holding(s) ? '作業枠の料理を左クリックでかける' : (handBusy(s) ?? `${COOK_BINS[bin].name}の容器を左クリックで、レードルで1杯取る`)),
+        });
+      } else if (source.kind === 'cup') {
+        steps.push({
+          label: `一緒に焼いた容器の${fname}を、作業枠の料理にかける（手が空の左クリック）`,
+          at: onFrame,
+          done: (s) => enough(s) || s.served > 0,
+          hint: (s) => handBusy(s) ?? '作業枠の料理に視点を合わせて、手が空のまま左クリック（容器のソースがかかり、容器はなくなる）',
+        });
+      } else {
+        // ヘラ（道具の手。F）で、付け合わせの器から1つすくって、のせる
+        const st = sideTrack!;
+        const sideName = BAKE_DISHES[source.side.vessel].name;
+        const sideSpot = (s: GameState): Target | null => {
+          const i = s.workFrames.findIndex((f) => st.mine(f) && scoopOf(f)?.finish === finish);
+          if (i >= 0) return frameAt(i);
+          const r = s.panRests.findIndex((f) => st.mine(f) && scoopOf(f)?.finish === finish);
+          return r >= 0 ? { kind: 'panRest', index: r } : null;
+        };
+        steps.push({
+          label: `ヘラ（F）で${fname}を1つすくって、作業枠の料理にのせる`,
+          at: (s) => {
+            const tool = s.tool;
+            if (tool?.kind === 'spatula' && tool.scoop === finish) return onFrame(s);
+            if (tool?.kind === 'spatula' && tool.scoop === null) return sideSpot(s) ?? onFrame(s);
+            return { kind: 'toolHook', id: 'spatula' };
+          },
+          done: (s) => enough(s) || s.served > 0,
+          hint: (s) => {
+            const tool = s.tool;
+            if (tool?.kind === 'spatula' && tool.scoop === finish) return '作業枠の料理に視点を合わせて、F でのせる';
+            if (tool?.kind === 'spatula' && tool.scoop === null) return `作業枠の${sideName}に視点を合わせて、F で1つすくう`;
+            if (tool?.kind === 'tongs' && tool.dish) return 'やっとこの器を置いてから（F）、ヘラに持ち替える';
+            return '1台目の具材台の縁のフックのヘラに視点を合わせて、F で取る';
+          },
+        });
+      }
+    });
 
-    // 8. 提供
+    // 6. 提供
     steps.push(serveBaked((s) => finished(s.hand), (s) => (finishedFrame(s) >= 0 ? frameAt(finishedFrame(s)) : null)));
     return steps;
   };
-
   return {
     fromTable,
     stockToOven,
@@ -926,17 +1120,43 @@ function makeKit(menu: MenuItem, cfg: GameConfig) {
 
 type Kit = ReturnType<typeof makeKit>;
 
-// --- 焼き物の表から、チュートリアルの工程を作る（クック編 C6）---
+// --- 焼き物の表から、チュートリアルの工程を作る（クック編 C6・C10 の前半）---
 
 // のせる物の取り出し元。bag = 冷凍の袋（1つずつ重ねて持つ）、bin = ストック容器、flip = 手に持った物を右クリックで別の形に入れる（逆さまのフォッカチオ）、
-// rightTake = ピザの具の容器を右クリックで取る（ピザチーズ1/2杯）、bottle = ボトルを右クリックで振る（グランモラビア）
+// rightTake = ピザの具の容器を右クリックで取る（ピザチーズ1/2杯）、bottle = ボトルを右クリックで振る（グランモラビア）、
+// cup = 小さい容器を取り、ピザの具の容器で fills の順に入れてから、器にのせる（チーズソースの容器。cookStock.ts の CUP_FILLS）
 type LoadSource =
   | { kind: 'bag'; id: FrozenBagId }
   | { kind: 'bin'; id: CookBinId }
   | { kind: 'flip'; id: CookBinId; from: BakeLoadId }
   | { kind: 'rightTake'; id: PizzaTopping }
-  | { kind: 'bottle'; id: BottleId };
-type TablePlan = { deck: OvenDeck; loads: { spec: LoadSpec; source: LoadSource }[]; finishes: { finish: BakeFinishId; bottle: BottleId }[] };
+  | { kind: 'bottle'; id: BottleId }
+  | { kind: 'cup'; id: CookBinId; fills: PizzaTopping[] };
+// 仕上げの取り出し元。bottle = ボトルを右クリックで振る、ladle = ソースの容器からレードルで1杯取ってかける（cookStock.ts の COOK_BINS の sauce）、
+// cup = 一緒に焼いた容器のソースを、手が空の左クリックでかける（bake.ts の CUP_FINISHES）、
+// scoop = 付け合わせの表（SIDE_TABLE）の器を作って焼き、ヘラ（F）で1つすくってのせる（bake.ts の SCOOP_LOADS）
+type FinishSource =
+  | { kind: 'bottle'; id: BottleId }
+  | { kind: 'ladle'; id: CookBinId }
+  | { kind: 'cup'; load: BakeLoadId }
+  | { kind: 'scoop'; load: BakeLoadId; side: BakeDish; plan: TablePlan };
+// 段階ごとの、流す段・流す前の手入れ・のせる物
+type StagePlan = { deck: OvenDeck; cares: BakeCare[]; loads: { spec: LoadSpec; source: LoadSource }[] };
+type TablePlan = { stages: StagePlan[]; finishes: { finish: BakeFinishId; source: FinishSource }[] };
+
+// 空の小さい容器から、その中身（fill）にするまでに入れるピザの具の順（入れられなければ null）
+function cupPath(to: CupFill): PizzaTopping[] | null {
+  const path: PizzaTopping[] = [];
+  let cur: CupFill = 'empty';
+  for (let i = 0; i < 8 && cur !== to; i++) {
+    const next = cupNext(cur);
+    const after: CupFill | undefined = next ? CUP_FILLS[cur].add?.[next] : undefined;
+    if (!next || !after) return null;
+    path.push(next);
+    cur = after;
+  }
+  return cur === to ? path : null;
+}
 
 // のせる物を、どこから取るか（表から探す。見つからなければ null）
 function loadSource(id: BakeLoadId): LoadSource | null {
@@ -953,29 +1173,64 @@ function loadSource(id: BakeLoadId): LoadSource | null {
   if (take) return { kind: 'rightTake', id: take };
   const bottle = BOTTLE_IDS.find((b) => BOTTLE_BAKE_LOAD[b] === id);
   if (bottle) return { kind: 'bottle', id: bottle };
+  const fill = (Object.keys(CUP_FILLS) as CupFill[]).find((f) => CUP_FILLS[f].load === id);
+  const cupBin = COOK_BIN_IDS.find((b) => COOK_BINS[b].cup);
+  const fills = fill ? cupPath(fill) : null;
+  if (cupBin && fills) return { kind: 'cup', id: cupBin, fills };
   return null;
 }
 
-// 表の1行から工程を作れるか。作れる形：空の器（作業枠に置ける3列系）から作る1段階の品で、1周で焼き上がり、のせる物と仕上げの取り出し元が見つかるもの
-// （中身の入った山から取る品・ピザ・2段階の品は、手で書いた工程を使う）
-function tableRecipePlan(dish: BakeDish): TablePlan | null {
-  if (dish.stock || dish.stages.length !== 1 || BAKE_DISHES[dish.vessel].series !== WORK_FRAMES.series) return null;
-  const { need, load, care } = dish.stages[0];
-  if (care?.length || (need !== 1 && need !== 2)) return null;
-  if (!['geta', 'board', 'smallPlate'].includes(dish.finish.base)) return null;
-  const loads: TablePlan['loads'] = [];
-  for (const spec of load) {
-    const source = loadSource(spec.id);
-    if (!source) return null;
-    loads.push({ spec, source });
+// 仕上げを、どこから取るか（表から探す。見つからなければ null）
+function finishSource(dish: BakeDish, finish: BakeFinishId): FinishSource | null {
+  const bottle = BOTTLE_IDS.find((b) => BOTTLE_BAKE_FINISH[b] === finish);
+  if (bottle) return { kind: 'bottle', id: bottle };
+  const ladle = COOK_BIN_IDS.find((b) => COOK_BINS[b].sauce === finish);
+  if (ladle) return { kind: 'ladle', id: ladle };
+  const full = fullLoad(dish);
+  const cup = (Object.keys(CUP_FINISHES) as BakeLoadId[]).find((l) => CUP_FINISHES[l] === finish && (full[l] ?? 0) > 0);
+  if (cup) return { kind: 'cup', load: cup };
+  // ヘラですくう物：付け合わせの表の、それをのせて焼く行（1段階・仕上げなし・品と別の器。器の種類で品と見分けるため）
+  const scoop = (Object.keys(SCOOP_LOADS) as BakeLoadId[]).find((l) => SCOOP_LOADS[l] === finish);
+  const side = scoop ? SIDE_TABLE.find((d) => d.finish.base === 'scoop' && (fullLoad(d)[scoop] ?? 0) > 0) : undefined;
+  if (!scoop || !side || side.stages.length !== 1 || side.vessel === dish.vessel) return null;
+  const plan = tableRecipePlan(side, ['scoop']);
+  return plan && plan.finishes.length === 0 ? { kind: 'scoop', load: scoop, side, plan } : null;
+}
+
+// 手入れのうち、工程にできるもの（チュートリアル中は熱い器の決まりがオフなので、手が空の左クリックでできる。game.ts の作業枠の左クリック）
+const TABLE_CARES: readonly BakeCare[] = ['scrape'];
+
+// 表の1行から工程を作れるか。作れる形：空の器（作業枠に置ける3列系）から作る品で、各段階が1周（上段）か下段1周で焼き上がり、
+// のせる物・手入れ・仕上げの取り出し元が見つかるもの。2段階目からは、流す前に手入れ（ヘラではがす）とのせる物がある形も作れる。
+// 小皿に移す品は、1段階で、仕上げはボトルだけ。ヘラですくう付け合わせは、品ごとに1種類まで。
+// （中身の入った山から取る品・ピザは、手で書いた工程を使う）。bases = 受け台（付け合わせの行は 'scoop'）
+function tableRecipePlan(dish: BakeDish, bases: readonly BakeBase[] = ['geta', 'board', 'smallPlate']): TablePlan | null {
+  if (dish.stock || dish.stages.length === 0 || BAKE_DISHES[dish.vessel].series !== WORK_FRAMES.series) return null;
+  if (!bases.includes(dish.finish.base)) return null;
+  const small = dish.finish.base === 'smallPlate';
+  if (small && dish.stages.length !== 1) return null;
+  const stages: StagePlan[] = [];
+  for (const [i, stage] of dish.stages.entries()) {
+    const cares = stage.care ?? [];
+    if (stage.need !== 1 && stage.need !== 2) return null;
+    if (cares.length > 0 && (i === 0 || !cares.every((c) => TABLE_CARES.includes(c)))) return null;
+    const loads: StagePlan['loads'] = [];
+    for (const spec of stage.load) {
+      const source = loadSource(spec.id);
+      if (!source) return null;
+      loads.push({ spec, source });
+    }
+    stages.push({ deck: stage.need === 2 ? 'lower' : 'upper', cares, loads });
   }
   const finishes: TablePlan['finishes'] = [];
   for (const finish of dish.finish.extras ?? []) {
-    const bottle = BOTTLE_IDS.find((b) => BOTTLE_BAKE_FINISH[b] === finish);
-    if (!bottle) return null;
-    finishes.push({ finish, bottle });
+    const source = finishSource(dish, finish);
+    if (!source || (small && source.kind !== 'bottle')) return null;
+    finishes.push({ finish, source });
   }
-  return { deck: need === 2 ? 'lower' : 'upper', loads, finishes };
+  const sides = new Set(finishes.flatMap((f) => (f.source.kind === 'scoop' ? [f.source.side.id] : [])));
+  if (sides.size > 1) return null;
+  return { stages, finishes };
 }
 
 // 手で書いた工程がない焼き物の品で、表から工程を作れるもの（なければ null）
@@ -983,7 +1238,6 @@ function tableDishFor(menuId: string): BakeDish | null {
   const dish = getBakeDish(menuId);
   return dish && tableRecipePlan(dish) ? dish : null;
 }
-
 const stock = (id: IngredientId): GuideAt => ({ kind: 'stock', id });
 
 // メニューごとの工程の並び（recipe.ts の MENU の id と同じキー）。

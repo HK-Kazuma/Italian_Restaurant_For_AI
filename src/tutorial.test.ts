@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_CONFIG as cfg } from './config';
 import { Game } from './game';
 import { BOTTLE_HOME, PIZZA_PLATE_GUIDE } from './layout';
-import { frontS } from './oven';
+import { LANE_OFFSETS, frontS } from './oven';
 import { MENU } from './recipe';
 import { hasTutorial, matchesTarget, tutorialSteps, type GuideAt } from './tutorial';
 import { TUTORIAL_PENDING_C10 } from './testShared';
@@ -44,8 +44,8 @@ const pizzaSlot = (index: number): Target => ({ kind: 'pizzaSlot', index });
 const pizzaSource = (id: 'sauce' | 'cheese' | 'mozzarella' | PizzaTop): Target => ({ kind: 'pizzaSource', id });
 const pizzaPlate = (id: number): Target => ({ kind: 'pizzaPlate', id });
 
-// 台本の1手：左クリック / 右クリック / 時間を進める / 矢印が指さない場所への左クリック（ボトルを台に置くなど）
-type Act = Target | { right: Target } | { wait: number } | { free: Target };
+// 台本の1手：左クリック / 右クリック / 時間を進める / 矢印が指さない場所への左クリック（ボトルを台に置くなど）/ 道具の手（F。ヘラですくう・のせる）
+type Act = Target | { right: Target } | { wait: number } | { free: Target } | { tool: Target };
 
 const mix = (): Act[] => Array.from({ length: cfg.mixClicks }, () => burner(0));
 const wait = (seconds: number): Act => ({ wait: seconds });
@@ -102,6 +102,32 @@ const c6DoriaDish = (loads: Act[], deck: 'upper' | 'lower'): Act[] => [
   getaStack, c6Outlet(deck), pass,
 ];
 const c6Shake = (id: BottleId): Act[] => [c6Bottle(id), { right: workFrame(0) }, { free: c6BottleBack(id) }];
+
+// --- C7：鉄板焼き6品（ステップK1。工程は表から作る。台本は、矢印どおりに作れることの裏付け）---
+// チュートリアル中は熱い器の決まりがオフ：出口の器は素手で取り、はがすのは手が空の左クリック。F（道具の手）は、ヘラで目玉焼きをすくう・のせるときだけ
+const c7Pan = 'hamburgPan' as const;
+const boardStack: Target = { kind: 'boardStack' };
+const c7Lane0Inlet = (style: BakeStyle): Target => ({ kind: 'ovenInlet', deck: 'upper', x: LANE_OFFSETS[0], s: frontS(style) }); // 鉄板と並べて流す（左のレーン）
+const c7Lane0Outlet: Target = { kind: 'ovenOutlet', deck: 'upper', lane: 0 };
+const spatulaHook: Target = { kind: 'toolHook', id: 'spatula' };
+// 鉄板を作業枠0に置いて、1回目の具をのせ、流す
+const c7First = (first: 'patty' | 'chicken', deck: 'upper' | 'lower'): Act[] => [c6Vessel(c7Pan), workFrame(0), c6Bin(first), workFrame(0), workFrame(0), c6Inlet(deck, c7Pan)];
+// 目玉焼き鉄板を作業枠0に置いて、卵2個 → 上段（左のレーン）
+const c7Eggs: Act[] = [c6Vessel('eggPan'), workFrame(0), c6Bin('egg'), c6Bin('egg'), workFrame(0), workFrame(0), c7Lane0Inlet('eggPan')];
+// 1回目のあと：出口から取って作業枠0 →（目玉焼き鉄板も出口から取って作業枠1）→ はがす → コーン・ポテト →（チーズソースの容器）→ 2回目を上段へ → 板に乗せて作業枠0
+const c7Second = (deck: 'upper' | 'lower', eggs: boolean, cup: boolean): Act[] => [
+  wait((deck === 'upper' ? cfg.ovenUpperTime : cfg.ovenLowerTime) + 1),
+  c6Outlet(deck), workFrame(0),
+  ...(eggs ? [c7Lane0Outlet, workFrame(1)] : []),
+  workFrame(0), // はがす（手が空の左クリック）
+  c6Bin('corn'), workFrame(0), c6Bin('potato'), workFrame(0),
+  ...(cup ? [c6Bin('cheeseSauceCup'), pizzaSource('sauce'), pizzaSource('cheese'), workFrame(0)] : []),
+  workFrame(0), c6Inlet('upper', c7Pan), wait(cfg.ovenUpperTime + 1),
+  boardStack, c6Outlet('upper'), workFrame(0),
+];
+const c7Ladle = (id: 'demiglace' | 'vegPaste'): Act[] => [c6Bin(id), workFrame(0)];
+const c7Egg: Act[] = [{ tool: spatulaHook }, { tool: workFrame(1) }, { tool: workFrame(0) }];
+const c7Serve: Act[] = [workFrame(0), pass];
 
 const SCRIPTS: Record<string, Act[]> = {
   tarako: [
@@ -249,6 +275,20 @@ const SCRIPTS: Record<string, Act[]> = {
   garlicFocaccia: c6PadDish([c6Bin('focaccia'), workFrame(0)], c6Shake('garlicSauce')),
   tarakoFocaccia: c6PadDish([c6Bin('focaccia'), { right: workFrame(0) }, c6Bin('tarakoSauce'), workFrame(0), ...c6Shake('granMoravia')]),
   cheeseFocaccia: c6PadDish([c6Bin('focaccia'), { right: workFrame(0) }, { right: { kind: 'pizzaSource', id: 'cheese' } }, workFrame(0), ...c6Shake('granMoravia')]),
+  // C7 の6品（ステップK1。工程は表から作る）
+  mixedGrill: [
+    c6Vessel(c7Pan), workFrame(0),
+    c6Bin('patty'), workFrame(0), ...c6Times(c6Bag('spicyChicken'), 2), workFrame(0), ...c6Times(c6Bag('popcornShrimp'), 5), workFrame(0),
+    ...c6Times(c6Bin('potato'), 2), workFrame(0), c6Bin('corn'), workFrame(0),
+    workFrame(0), c6Inlet('lower', c7Pan), wait(cfg.ovenLowerTime + 1),
+    boardStack, c6Outlet('lower'), workFrame(0),
+    ...c7Ladle('demiglace'), ...c7Serve,
+  ],
+  hamburg: [...c7First('patty', 'upper'), ...c7Eggs, ...c7Second('upper', true, false), ...c7Ladle('demiglace'), ...c7Egg, ...c7Serve],
+  italianHamburg: [...c7First('patty', 'upper'), ...c7Second('upper', false, true), workFrame(0), ...c7Serve],
+  diavolaHamburg: [...c7First('patty', 'upper'), ...c7Eggs, ...c7Second('upper', true, false), ...c7Ladle('vegPaste'), ...c7Egg, ...c7Serve],
+  chickenDiavola: [...c7First('chicken', 'lower'), ...c7Second('lower', false, false), ...c7Ladle('vegPaste'), ...c7Serve],
+  chickenCheese: [...c7First('chicken', 'lower'), ...c7Second('lower', false, true), workFrame(0), ...c7Serve],
 };
 
 function newTutorial(menuId: string) {
@@ -275,7 +315,11 @@ function play(menuId: string, acts: Act[], onComplete: ((id: string) => void) | 
       expectArrowAt(act.right);
       g.rightClick(act.right);
     } else if ('free' in act) g.interact(act.free);
-    else {
+    else if ('tool' in act) {
+      expectArrowAt(act.tool);
+      expect(g.planTool(act.tool), `${label()}: F でできることがない（${JSON.stringify(act.tool)}）`).not.toBeNull();
+      g.useTool(act.tool);
+    } else {
       expectArrowAt(act);
       g.interact(act);
     }
@@ -519,6 +563,7 @@ describe('チュートリアル：メニューを最後まで作る（矢印は�
       if ('wait' in act) g.update(act.wait);
       else if ('right' in act) g.rightClick(act.right);
       else if ('free' in act) g.interact(act.free);
+      else if ('tool' in act) g.useTool(act.tool); // 道具の手（ステップK1 で Act に足した手。この台本には出ない）
       else {
         const at = g.tutorialGuide()?.at;
         if (at && at.kind !== 'surfaceSpot' && at.kind !== 'fridgeDoor') {
@@ -556,6 +601,7 @@ describe('チュートリアル：メニューを最後まで作る（矢印は�
       if ('wait' in act) g.update(act.wait);
       else if ('right' in act) g.rightClick(act.right);
       else if ('free' in act) g.interact(act.free);
+      else if ('tool' in act) g.useTool(act.tool); // 道具の手（ステップK1 で Act に足した手。この台本には出ない）
       else {
         const guide = g.tutorialGuide();
         expect(guide, `工程${g.state.tutorial!.step + 1}`).not.toBeNull();
