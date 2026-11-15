@@ -28,7 +28,6 @@ import { MENU, formOf, getMenu } from './recipe';
 import { serveScore } from './score';
 import { createTicket } from './tickets';
 import { hasTutorial, matchesTarget, tutorialSteps, type GuideAt } from './tutorial';
-import { TUTORIAL_PENDING_C10 } from './testShared';
 import type { Item, PizzaTop, Target, Ticket } from './types';
 
 // クック編設計書 4.3（C3）：ドリア4品・ピザ4品。
@@ -494,8 +493,7 @@ const SCRIPTS: Record<string, Act[]> = {
 describe('チュートリアル：C3 の6品', () => {
 
   it('提供できる品すべてに工程がある', () => {
-    // C7 の6品（鉄板焼き）は、C10 の自動生成が入るまで対象外（TUTORIAL_PENDING_C10。2026-11-15 承認）。それ以外の品は今までどおり全件
-    for (const m of MENU.filter((x) => x.enabled && !TUTORIAL_PENDING_C10.includes(x.id))) {
+    for (const m of MENU.filter((x) => x.enabled)) {
       expect(hasTutorial(m.id), m.id).toBe(true);
       expect(tutorialSteps(m.id, cfg)!.length).toBeGreaterThan(0);
     }

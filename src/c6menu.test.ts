@@ -12,7 +12,6 @@ import { MENU, getMenu } from './recipe';
 import { serveScore } from './score';
 import { createTicket } from './tickets';
 import { hasTutorial, matchesTarget, tutorialSteps, type GuideAt } from './tutorial';
-import { TUTORIAL_PENDING_C10 } from './testShared';
 import type { BakeStyle, BottleId, CookBinId, FrozenBagId, Item, Target, Ticket } from './types';
 
 // クック編設計書 4.6（C6）：前菜4品・フォッカチオ5品。
@@ -507,8 +506,7 @@ describe('小皿に移す（受け台 smallPlate）と、器に入れる決ま�
 
 describe('チュートリアル：9品とも、表から工程を作り、最後まで作れる', () => {
   it('提供できる品すべてに工程がある', () => {
-    // C7 の6品（鉄板焼き）は、C10 の自動生成が入るまで対象外（TUTORIAL_PENDING_C10。2026-11-15 承認）。それ以外の品は今までどおり全件
-    for (const m of MENU.filter((x) => x.enabled && !TUTORIAL_PENDING_C10.includes(x.id))) {
+    for (const m of MENU.filter((x) => x.enabled)) {
       expect(hasTutorial(m.id), m.id).toBe(true);
       expect(tutorialSteps(m.id, cfg)!.length, m.id).toBeGreaterThan(0);
     }

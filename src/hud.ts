@@ -3,13 +3,13 @@ import { DEFAULT_DIFFICULTY, DIFFICULTIES, getDifficulty, isDifficulty, type Dif
 import { DevBoardView, devBoardHtml } from './devboardView';
 import { describeItem, describeTool } from './game';
 import { INGREDIENTS } from './ingredients';
-import { showMission } from './mission';
+import { currentMission, type MissionId } from './mission';
 import { DEFAULT_POSITION, POSITIONS, STATION_NAME, getPosition, isPosition, menusFor, rankingBoard } from './position';
 import { menuSections, pickCategory, type MenuCard, type MenuSection } from './menuList';
 import { MENU, getMenu, type MenuCategory, type MenuItem } from './recipe';
 import { NAME_MAX, describeSubmitError, ranking } from './ranking';
 import { DEFAULT_SETTINGS, SETTING_SPECS, clampSetting, formatSetting, type SettingKey, type Settings } from './settings';
-import { hasTutorial, tutorialSteps, type TutorialView } from './tutorial';
+import { SOLO_TUTORIALS, hasTutorial, tutorialSteps, type TutorialView } from './tutorial';
 import type { GameState, Phase, Position } from './types';
 
 const CONTROLS_HTML = `
@@ -94,6 +94,19 @@ function menuBookHtml(kind: BookKind, sections: readonly MenuSection[], category
     .join('');
   return `<div class="cat-tabs">${tabs}</div>
     <h3 class="menu-head">${section.category.name}<small>${section.category.en}</small></h3>
+    <div class="menu-cards">${cards}</div>${kind === 'tutorial' ? soloTutorialsHtml(sections, tutorialCounts) : ''}`;
+}
+
+// チュートリアルの一覧の下に、伝票の品ではない独立したチュートリアル（下調理・道具の手。クック編 C10）を並べる。
+// どれもクックの作業なので、クックの品が並ぶポジション（クック・通し）のときだけ出す
+function soloTutorialsHtml(sections: readonly MenuSection[], tutorialCounts: ReadonlyMap<string, number>): string {
+  if (!sections.some((s) => s.cards.some((c) => c.station === 'cook'))) return '';
+  const cards = SOLO_TUTORIALS.map((t) => {
+    const steps = tutorialCounts.get(t.id);
+    const body = `<span class="menu-card-body"><span class="menu-card-name">${t.name}</span><span class="menu-card-foot"><span class="badge st-cook">${STATION_NAME.cook}</span>${steps ? `<span class="menu-meta">${steps}工程 ›</span>` : '<span class="menu-meta">準備中</span>'}</span></span>`;
+    return steps ? `<button class="menu-card" data-tutorial="${t.id}">${body}</button>` : `<div class="menu-card disabled">${body}</div>`;
+  }).join('');
+  return `<h3 class="menu-head">基本の作業<small>BASICS</small></h3>
     <div class="menu-cards">${cards}</div>`;
 }
 
@@ -103,6 +116,10 @@ function tutorialCounts(cfg: GameConfig): Map<string, number> {
   for (const m of MENU) {
     const steps = m.enabled && hasTutorial(m.id) ? tutorialSteps(m.id, cfg) : null;
     if (steps) out.set(m.id, steps.length);
+  }
+  for (const t of SOLO_TUTORIALS) {
+    const steps = tutorialSteps(t.id, cfg);
+    if (steps) out.set(t.id, steps.length);
   }
   return out;
 }
@@ -255,7 +272,8 @@ export class Hud {
   private crosshair = el('div', 'crosshair');
   private note = el('div', 'practice-note');
   private mission = el('div', 'mission hidden');
-  private missionCleared = false; // チュートリアルを受けたことがあるか（受けたら、ミッションは出さない）
+  private missionCleared: Record<MissionId, boolean> = { heat: false, cook: false }; // 各ミッションを達成したか（達成したら、次のミッションを出す。mission.ts の MISSIONS）
+  private missionShown: MissionId | null = null; // いま中身を出しているミッション
   private startPopup = el('div', 'start-popup hidden');
   private startPopupTimer = 0;
   private ipad = el('div', 'ipad hidden');
@@ -293,9 +311,6 @@ export class Hud {
     this.guideArrow.textContent = '▲';
     this.note.textContent = '練習モード（時間制限なし）：後ろの壁の iPad を左クリックで取り、右クリックで開くと、チュートリアルやゲーム開始ができます';
     this.startPopup.textContent = 'まずは後ろのタブレットから操作方法とレシピを確認しよう！';
-    this.mission.innerHTML = `<span class="mission-icon" aria-hidden="true">🍴</span>
-      <div class="mission-text"><b>ミッション：チュートリアルを受けよう！</b>
-      <span>後ろの壁の iPad を取って右クリック →「チュートリアル」</span></div>`;
     this.tutorialCounts = tutorialCounts(cfg);
     this.ipad.innerHTML = ipadHtml(cfg, settings);
     this.devBoardView = new DevBoardView(this.ipad.querySelector<HTMLElement>('[data-page="devboard"]')!);
@@ -494,9 +509,14 @@ export class Hud {
     this.rail.classList.toggle('zoom', on);
   }
 
-  // チュートリアルを受けたことがあるか（受けていれば、ミッションは出さない）
+  // チュートリアルを受けたことがあるか（受けていれば、最初のミッションは出さない）
   setMissionCleared(cleared: boolean): void {
-    this.missionCleared = cleared;
+    this.missionCleared.heat = cleared;
+  }
+
+  // クックのチュートリアルを受けたことがあるか（クック編 C10。受けていれば、クックのミッションは出さない）
+  setCookMissionCleared(cleared: boolean): void {
+    this.missionCleared.cook = cleared;
   }
 
   // hint: いま視点が合っている物に対する操作の案内（なければ空）
@@ -505,7 +525,14 @@ export class Hud {
     const practice = state.mode === 'practice';
     this.root.classList.toggle('practice', practice); // 練習中は、タイマーの代わりに「練習」を出して、スコアは隠す
     this.root.classList.toggle('tutorial-on', tutorial !== null);
-    const mission = showMission(state, this.missionCleared);
+    const current = currentMission(state, this.missionCleared);
+    const mission = current !== null;
+    if (current && current.id !== this.missionShown) {
+      this.mission.innerHTML = `<span class="mission-icon" aria-hidden="true">🍴</span>
+      <div class="mission-text"><b>ミッション：${current.title}</b>
+      <span>${current.how}</span></div>`;
+    }
+    this.missionShown = current?.id ?? null;
     this.mission.classList.toggle('hidden', !mission);
     this.root.classList.toggle('mission-on', mission);
     this.renderTutorial(tutorial);

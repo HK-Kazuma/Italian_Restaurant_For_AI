@@ -1,6 +1,6 @@
 import { createBoiler, pressButton, returnNoodle, setNoodle, startShortBoil, takeNoodle, updateBoiler } from './boiler';
 import { DEFAULT_CONFIG, type GameConfig } from './config';
-import { DEFAULT_DIFFICULTY, configFor, getDifficulty, type Difficulty } from './difficulty';
+import { DEFAULT_DIFFICULTY, configFor, weightsFor, type Difficulty } from './difficulty';
 import { INGREDIENTS } from './ingredients';
 import {
   addIngredient,
@@ -28,7 +28,7 @@ import { serveScore } from './score';
 import { BAKE_BASES, BAKE_FINISH_NAME, BAKE_LOAD_NAME, BAKE_VESSELS, baseOf, cupPourOf, isHot, needsCare, scoopOf, dishName, bakeLabel, canFinishWith, canTakeBase, candidatesAt, dishTitle, findBakedTicket, flowPlan, getBakeDish, loadRoom, overFinishedDish, pizzaTitle, progressOf, serveHint, servableDish, stockProgress, vesselCapacity, viewOf, whyNotLoad, withFinish, type BakeDish } from './bake';
 import { DEFAULT_POSITION, PRACTICE_POSITION, menusFor } from './position';
 import { createTicket, nextTicketInterval, pickMenu } from './tickets';
-import { tutorialSteps, type GuideAt, type TutorialStep, type TutorialView } from './tutorial';
+import { soloTutorial, tutorialName, tutorialSteps, tutorialTicketMenu, type GuideAt, type TutorialStep, type TutorialView } from './tutorial';
 import { BOTTLE_ACTION, BOTTLE_BAKE_FINISH, BOTTLE_BAKE_LOAD, BOTTLE_FRIDGE_ITEM, BOTTLE_IDS, BOTTLE_PLATE, BOTTLE_SURFACES, BOTTLE_VERB, bottleOfFridgeItem, isFridgeBottle } from './bottle';
 import { FRIDGE_HOME, FRIDGE_ITEM_IDS, FRIDGE_ITEM_NAME, BAG_FRIDGE_ITEM, bagOfFridgeItem, clampOnShelf, fitsOnShelf, fridgeItemOf, returnToFridge } from './fridge';
 import { BAKE_DISHES, BOTTLE_HOME, OVEN_STOCK_NAME, FREE_TRAY_HOME, GETA, GETA_HOME, GETA_RANGE, PIZZA_COUNTER, PIZZA_PLATE_R, PIZZA_PLATE_STACK, SHELF_STACKS, SURFACES, REST_DISH, TOOL_HOME, TOOL_REST, WORK_FRAMES, legacyBagSpot, overlapsLeftFixture, overlapsPrepFixture, overlapsServePass, overlapsShelfFixture, flatRange, propRange, toolRestRange } from './layout';
@@ -265,28 +265,31 @@ export class Game {
   }
 
   // チュートリアルを始める。鍋・皿などは最初の状態に戻り（置いた食材・ボトル・冷蔵庫の配置は引き継ぐ）、伝票はこのメニューの1枚だけ届いている。
-  // 手に持っていた iPad も壁に戻る。チュートリアルがないメニューなら何もせず false
+  // 手に持っていた iPad も壁に戻る。チュートリアルがないメニューなら何もせず false。
+  // 独立したチュートリアル（下調理・道具の手。クック編 C10）は、伝票なしで始まる（tutorial.ts の SOLO_TUTORIALS）
   startTutorial(menuId: string): boolean {
     const steps = this.stepsOf(menuId);
     if (!steps) return false;
     this.state = this.initialState('playing', 'practice', this.carriedLayout());
     const s = this.state;
-    this.tableCookSetup();
-    s.tickets = [createTicket(s.nextTicketId++, getMenu(menuId), s.time)];
+    this.tableCookSetup(soloTutorial(menuId)?.toolsOnTable ?? false);
+    const ticket = tutorialTicketMenu(menuId);
+    s.tickets = ticket ? [createTicket(s.nextTicketId++, ticket, s.time)] : [];
     s.nextTicketAt = Infinity; // ほかの伝票は届かない
     s.tutorial = { menuId, step: 0, total: steps.length };
     return true;
   }
 
-  // チュートリアルでは、ケース・パックは作業台に出てあり、道具はフックに掛かっている状態から始める（冷蔵庫から出す手順は、教えない）
-  private tableCookSetup(): void {
+  // チュートリアルでは、ケース・パックは作業台に出てあり、道具はフックに掛かっている状態から始める（冷蔵庫から出す手順は、教えない）。
+  // toolsOnTable = 道具を台の上の最初の置き場所（TOOL_HOME）に置いた状態から始める（道具の手のチュートリアル。クック編 C10）
+  private tableCookSetup(toolsOnTable = false): void {
     const s = this.state;
     for (const id of CASE_TRAY_IDS) {
       s.trays[id] = 'table';
       s.traySpot[id] = CASE_TRAY_IDS.indexOf(id);
     }
     BAG_IDS.forEach((id, i) => (s.bags[id] = { at: 'table', spot: legacyBagSpot(i) }));
-    s.toolSpots = { tongs: null, spatula: null };
+    s.toolSpots = toolsOnTable ? { tongs: { ...TOOL_HOME.tongs }, spatula: { ...TOOL_HOME.spatula } } : { tongs: null, spatula: null };
     s.tool = null;
   }
 
@@ -306,7 +309,7 @@ export class Game {
     if (!t || !steps) return;
     while (t.step < steps.length && steps[t.step].done(this.state)) t.step++;
     if (t.step < steps.length) return;
-    this.say(`${getMenu(t.menuId).name}のチュートリアル完了！`, 'good');
+    this.say(`${tutorialName(t.menuId)}のチュートリアル完了！`, 'good');
     this.stopTutorial();
     this.onTutorialComplete?.(t.menuId);
   }
@@ -333,7 +336,7 @@ export class Game {
     if (!t || !steps) return null;
     const hint = s.hand?.kind === 'ipad' ? 'iPadを壁に戻す（壁に向けて左クリック）' : (steps[t.step].hint?.(s) ?? null);
     const progress = steps[t.step].progress?.(s) ?? null;
-    return { menuName: getMenu(t.menuId).name, labels: steps.map((x) => x.label), step: t.step, hint, progress };
+    return { menuName: tutorialName(t.menuId), labels: steps.map((x) => x.label), step: t.step, hint, progress };
   }
 
   pause(): void {
@@ -371,7 +374,7 @@ export class Game {
     // （間隔・上限・出てくる料理は、選んだ難易度で変わる。品は、選んだポジションが担当する品だけに絞ってから選ぶ）
     const practice = s.mode === 'practice';
     const cfg = configFor(this.cfg, s.difficulty);
-    const weights = s.difficulty ? getDifficulty(s.difficulty).menuWeights : undefined;
+    const weights = s.difficulty ? weightsFor(s.difficulty) : undefined;
     const max = practice ? cfg.practiceMaxTickets : cfg.maxOpenTickets;
     if (s.tickets.length < max) {
       s.tickets.push(createTicket(s.nextTicketId++, pickMenu(menusFor(s.position), this.rng, weights), s.time));
@@ -392,10 +395,12 @@ export class Game {
 
   // --- 道具の手（クック編 C4）---
 
-  // 熱い器の決まりが効いているか（この難易度の設定。トライアルはオフ。チュートリアル中は、素手の手順で案内しているのでオフ）
+  // 熱い器の決まりが効いているか（この難易度の設定。トライアルはオフ。チュートリアル中は、素手の手順で案内しているのでオフ。
+  // ただし道具の手のチュートリアルは、やっとこ・ヘラを教えるのでオン（tutorial.ts の SOLO_TUTORIALS の hot。クック編 C10））
   hotHandling(): boolean {
     const s = this.state;
-    return configFor(this.cfg, s.difficulty).hotHandling && !s.tutorial;
+    if (s.tutorial) return soloTutorial(s.tutorial.menuId)?.hot ?? false;
+    return configFor(this.cfg, s.difficulty).hotHandling;
   }
 
   // その手が持っている物（やっとこは、つかんでいる器）

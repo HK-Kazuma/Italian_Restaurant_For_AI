@@ -7,9 +7,10 @@ import { Hud } from './hud';
 import { Input } from './input';
 import { Interactor } from './interaction';
 import { Player } from './player';
-import { loadTutorialCleared, saveTutorialCleared } from './mission';
+import { loadCookTutorialCleared, loadTutorialCleared, saveCookTutorialCleared, saveTutorialCleared } from './mission';
 import { rankingBoard } from './position';
 import { createKitchen } from './scene';
+import { isCookTutorial } from './tutorial';
 import { loadSettings, lookScale, saveSettings } from './settings';
 import { TRAY_ZONE, isCaseTray, isFreeTray, trayContentName } from './tray';
 import type { Target } from './types';
@@ -123,10 +124,16 @@ const hud = new Hud(
 );
 
 // 練習キッチンの左上の「チュートリアルを受けよう」ミッション：どれかのチュートリアルを最後までやり遂げたら達成（そのブラウザでは、もう出さない）
+// そのあとは「クックのチュートリアルを受けよう」：クックの品のチュートリアルを最後までやり遂げたら達成（クック編 C10）
 hud.setMissionCleared(loadTutorialCleared());
-game.onTutorialComplete = () => {
+hud.setCookMissionCleared(loadCookTutorialCleared());
+game.onTutorialComplete = (menuId) => {
   saveTutorialCleared();
   hud.setMissionCleared(true);
+  if (isCookTutorial(menuId)) {
+    saveCookTutorialCleared();
+    hud.setCookMissionCleared(true);
+  }
 };
 
 // カーソルが出たまま取り残されたとき（再ロックが拒否された直後など）は、画面クリックで視点操作に戻る

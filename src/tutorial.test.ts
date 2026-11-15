@@ -5,7 +5,6 @@ import { BOTTLE_HOME, PIZZA_PLATE_GUIDE } from './layout';
 import { LANE_OFFSETS, frontS } from './oven';
 import { MENU } from './recipe';
 import { hasTutorial, matchesTarget, tutorialSteps, type GuideAt } from './tutorial';
-import { TUTORIAL_PENDING_C10 } from './testShared';
 import type { BakeStyle, BottleId, CookBinId, FrozenBagId, PizzaTop, Target, TrayId } from './types';
 
 // --- 設備の指定（game.test.ts と同じ書き方）---
@@ -344,10 +343,7 @@ function play(menuId: string, acts: Act[], onComplete: ((id: string) => void) | 
 
 describe('チュートリアル：メニューの一覧', () => {
   it('提供できるメニューすべてに、工程が用意されている（メニューを足したら、工程も足す）', () => {
-    // C7 の6品（鉄板焼き）は、C10 の自動生成が入るまで対象外（TUTORIAL_PENDING_C10。2026-11-15 承認）。それ以外の品は今までどおり全件。
-    // 除外は、提供できる品の id だけに効く（一覧の打ち間違いで、別の品が黙って外れないように確かめる）
-    for (const id of TUTORIAL_PENDING_C10) expect(MENU.some((x) => x.id === id && x.enabled), id).toBe(true);
-    for (const m of MENU.filter((x) => x.enabled && !TUTORIAL_PENDING_C10.includes(x.id))) {
+    for (const m of MENU.filter((x) => x.enabled)) {
       expect(hasTutorial(m.id), `${m.name}（${m.id}）の工程がない`).toBe(true);
       expect(tutorialSteps(m.id, cfg)!.length).toBeGreaterThan(0);
     }
@@ -551,9 +547,7 @@ describe('チュートリアル：矢印と工程の進み方', () => {
 });
 
 describe('チュートリアル：メニューを最後まで作る（矢印は上手な人の手順を指す）', () => {
-  // C7 の6品（鉄板焼き）は、C10 の自動生成が入るまで対象外（TUTORIAL_PENDING_C10。2026-11-15 承認）。
-  // ケースは消さず、除外リストで外すだけ（C10 で除外を外せば、6品のケースが自動で戻る）
-  for (const m of MENU.filter((x) => x.enabled && !TUTORIAL_PENDING_C10.includes(x.id))) {
+  for (const m of MENU.filter((x) => x.enabled)) {
     it(`${m.name}：矢印のとおりに作ると、提供できて、チュートリアルが完了する`, () => {
       const script = SCRIPTS[m.id];
       expect(script, `${m.name} の台本がない`).toBeDefined();
