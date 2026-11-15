@@ -5,7 +5,7 @@ import { BOTTLE_BAKE_FINISH, BOTTLE_BAKE_LOAD, BOTTLE_IDS, BOTTLE_SURFACES, COOK
 import { DEFAULT_CONFIG as cfg } from './config';
 import { COOK_BINS, FLIP_LOADS, SOURCE_RIGHT_TAKE, pourInto } from './cookStock';
 import { Game, describeItem } from './game';
-import { BOTTLE_HOME, COOK_BIN, COOK_BIN_SPOTS, OVEN_COUNTER, OVEN_COUNTER_ROW, OVEN_COUNTER_ZS, PREP_FIXTURES, SURFACES } from './layout';
+import { BOTTLE_HOME, COOK_BIN, COOK_BIN_SPOTS, FROZEN_SHELF, OVEN_COUNTER, OVEN_COUNTER_ROW, OVEN_COUNTER_ZS, PREP_FIXTURES, SHELF_FIXTURES, SURFACES, overlapsShelfFixture } from './layout';
 import { bakeItem, frontS } from './oven';
 import { menusFor } from './position';
 import { MENU, getMenu } from './recipe';
@@ -330,7 +330,7 @@ describe('ピザチーズ1/2杯：ピザチーズの容器を右クリックす�
 // ===================== ボトル =====================
 
 describe('クック用のボトル（グランモラビア・シナモンパウダー・ガーリックソース）', () => {
-  it('BottleId に3種類。作業台にだけ置ける（最初から作業台の上）。ヒートのボトルは、今までどおり作業台に置けない', () => {
+  it('BottleId に3種類。作業台と壁の棚にだけ置ける（最初から壁の棚の上）。ヒートのボトルは、今までどおり作業台に置けない', () => {
     expect(BOTTLE_IDS.slice(-3)).toEqual(['granMoravia', 'cinnamon', 'garlicSauce']);
     expect(COOK_BOTTLE_IDS).toEqual(['granMoravia', 'cinnamon', 'garlicSauce']);
     for (const id of BOTTLE_IDS) {
@@ -342,7 +342,8 @@ describe('クック用のボトル（グランモラビア・シナモンパウ�
     const g = cookGame();
     for (const id of COOK_BOTTLE_IDS) {
       expect(g.state.bottles[id]).toEqual(BOTTLE_HOME[id]);
-      expect(BOTTLE_HOME[id].surface).toBe('prep');
+      expect(BOTTLE_HOME[id].surface).toBe('shelf');
+      expect(BOTTLE_SURFACES[id]).toEqual(['prep', 'shelf']);
     }
   });
 
@@ -362,6 +363,18 @@ describe('クック用のボトル（グランモラビア・シナモンパウ�
     g.state.hand = { kind: 'bottle', id: 'parsley' };
     g.state.bottles.parsley = null;
     expect(g.previewBottle(bottleBack('cinnamon'))).toMatchObject({ valid: false, reason: 'surface' });
+  });
+
+  it('壁の棚の上にも置き直せる（ピザ生地・鉄板・容器の上には置けない）。ガーリックの容器やヒートのボトルは置けない', () => {
+    const g = cookGame();
+    g.interact(bottle('cinnamon'));
+    const home = BOTTLE_HOME.granMoravia;
+    expect(g.previewBottle({ kind: 'tableTop', surface: 'shelf', x: 0, z: BOTTLE_HOME.cinnamon.z })?.valid).toBe(true); // 持ち上げたボトルのもとの場所（あき）
+    expect(g.previewBottle({ kind: 'tableTop', surface: 'shelf', x: 0, z: home.z })).toMatchObject({ valid: false, reason: 'gap' }); // ほかのボトルの上
+    const [dough] = [SHELF_FIXTURES[0]];
+    expect(g.previewBottle({ kind: 'tableTop', surface: 'shelf', x: dough.x, z: dough.z })).toMatchObject({ valid: false, reason: 'gap' });
+    g.state.hand = { kind: 'tray', id: 'garlic' };
+    expect(g.previewFreeTray({ kind: 'tableTop', surface: 'shelf', x: 0, z: BOTTLE_HOME.cinnamon.z })).toMatchObject({ valid: false, reason: 'surface' });
   });
 
   it('クック用のボトルは、ヒートの皿にはかけない', () => {
@@ -475,13 +488,16 @@ describe('小皿に移す（受け台 smallPlate）と、器に入れる決ま�
     expect(PREP_FIXTURES.some((p) => Math.abs(p.x - at.xr) < 1e-9 && Math.abs(p.z - z) < 1e-9)).toBe(true);
     expect(Math.abs(at.zr) + COOK_BIN.d / 2).toBeLessThanOrEqual(OVEN_COUNTER.depth / 2);
     expect(COOK_BINS.tarakoSauce.gives).toBe('tarakoSauce');
-    // ボトルの最初の置き場所は、作業台の置き物と重ならず、天板の中
+    // ボトルの最初の置き場所は、壁の棚の上で、棚の置き物と重ならず、棚の中
     for (const id of COOK_BOTTLE_IDS) {
       const b = BOTTLE_HOME[id];
-      expect(PREP_FIXTURES.some((p) => Math.abs(p.x - b.x) < p.hx + 0.06 && Math.abs(p.z - b.z) < p.hz + 0.06), id).toBe(false);
-      expect(Math.abs(b.x)).toBeLessThan(SURFACES.prep.width / 2);
-      expect(Math.abs(b.z)).toBeLessThan(SURFACES.prep.depth / 2);
+      expect(b.surface).toBe('shelf');
+      expect(overlapsShelfFixture(b.x, b.z, 0.06), id).toBe(false);
+      expect(Math.abs(b.x)).toBeLessThan(SURFACES.shelf.width / 2);
+      expect(Math.abs(b.z)).toBeLessThan(SURFACES.shelf.depth / 2);
     }
+    // 卵の容器も、壁の棚の上（ボトルと重ならない）
+    expect(COOK_BIN_SPOTS.egg.y).toBe(FROZEN_SHELF.y);
   });
 });
 

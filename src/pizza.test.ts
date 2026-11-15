@@ -131,8 +131,6 @@ describe('置き場（layout.ts）', () => {
       { name: 'cheese', x: PIZZA_COUNTER.cheese.xr, z: PIZZA_COUNTER.cheese.zr, hx: PIZZA_COUNTER.cheese.w / 2, hz: PIZZA_COUNTER.cheese.d / 2 },
       { name: 'mozz', x: PIZZA_COUNTER.mozz.xr, z: PIZZA_COUNTER.mozz.zr, hx: PIZZA_COUNTER.mozz.w / 2, hz: PIZZA_COUNTER.mozz.d / 2 },
       ...PIZZA_COUNTER.slots.map((s, i) => ({ name: `slot${i}`, x: s.xr, z: s.zr, hx: PIZZA_COUNTER.slotR, hz: PIZZA_COUNTER.slotR })),
-      { name: 'dough', x: PIZZA_COUNTER.doughStack.xr, z: PIZZA_COUNTER.doughStack.zr, hx: 0.215, hz: 0.215 },
-      { name: 'pan', x: PIZZA_COUNTER.panStack.xr, z: PIZZA_COUNTER.panStack.zr, hx: 0.25, hz: 0.25 },
     ];
     for (const b of boxes) {
       expect(b.x - b.hx, b.name).toBeGreaterThanOrEqual(-halfW - 1e-6);
@@ -673,8 +671,6 @@ describe('作業台（具材台の天板）にも置ける', () => {
       ['チーズ', PIZZA_COUNTER.cheese.xr, PIZZA_COUNTER.cheese.zr],
       ['モッツァレラ', PIZZA_COUNTER.mozz.xr, PIZZA_COUNTER.mozz.zr],
       ['組み立て台', PIZZA_COUNTER.slots[0].xr, PIZZA_COUNTER.slots[0].zr],
-      ['鉄板のスタック', PIZZA_COUNTER.panStack.xr, PIZZA_COUNTER.panStack.zr],
-      ['生地のスタック', PIZZA_COUNTER.doughStack.xr, PIZZA_COUNTER.doughStack.zr],
     ];
     for (const [name, x, z] of fixtures) {
       expect(g.previewProp(tableTop(x, z, 'prep')), name).toMatchObject({ valid: false, reason: 'gap' });

@@ -42,7 +42,7 @@ export type BottleId = Extract<IngredientId, 'dressing' | 'paprika' | 'garum' | 
 export type FridgeBottleId = Extract<BottleId, 'dressing' | 'paprika' | 'garum'>;
 
 // 物を置ける台。salad = 右のサラダ台、left = IHの左の台、hotWater = 湯煎器の奥と右の台、prep = 作業台（オーブンの入口の先に並ぶ3台の具材台の天板。1つの面として扱う。ピザのお皿・鉄板と、クック用のボトル（bottle.ts）だけが置ける）
-export type SurfaceId = 'salad' | 'left' | 'hotWater' | 'prep';
+export type SurfaceId = 'salad' | 'left' | 'hotWater' | 'prep' | 'shelf'; // shelf = クック側の壁の吊り棚（高さ 1.45m。クック用のボトルを置ける）
 
 // 台の上の置き場所。台の中心からの相対位置（x: 右、z: 手前）
 export type TableSpot = { surface: SurfaceId; x: number; z: number };

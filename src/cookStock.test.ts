@@ -4,7 +4,7 @@ import { DEFAULT_CONFIG as cfg } from './config';
 import { COOK_BINS, COOK_BIN_IDS, FROZEN_BAGS, FROZEN_BAG_IDS, PREP_STOCKS, addToStack, binLabel, binLow, pourInto, takeFromBin } from './cookStock';
 import { configFor } from './difficulty';
 import { Game, describeItem } from './game';
-import { COOK_BIN, COOK_BIN_SPOTS, FROZEN_SHELF, FROZEN_SHELF_SPAN, OVEN_COUNTER, OVEN_COUNTER_ROW, OVEN_COUNTER_ZS, PREP_FIXTURES, ROOM_MIN_X, frozenBagSpot } from './layout';
+import { COOK_BIN, COOK_BIN_SPOTS, FROZEN_BAG_COUNT, FROZEN_BAG_ROW, FROZEN_SHELF, FROZEN_SHELF_SPAN, OVEN_COUNTER, OVEN_COUNTER_ROW, OVEN_COUNTER_ZS, PREP_FIXTURES, ROOM_MIN_X, SHELF_PROPS, frozenBagOnCounter, frozenBagSpot } from './layout';
 import { bakeItem, frontS, laneOfOffset } from './oven';
 import type { Item, Target } from './types';
 
@@ -374,6 +374,7 @@ describe('置き場所', () => {
   it('ストック容器は1台目と3台目の天板の上。作業台の置き物（PREP_FIXTURES）に登録され、天板に収まる', () => {
     for (const id of COOK_BIN_IDS) {
       const at = COOK_BIN_SPOTS[id];
+      if (at.y !== undefined) continue; // 棚に乗る容器（脂取りシート）は、天板の置き物ではない
       expect([0, 2]).toContain(at.counter);
       const x = at.xr;
       const z = OVEN_COUNTER_ZS[at.counter] - OVEN_COUNTER_ROW.z + at.zr;
@@ -389,23 +390,42 @@ describe('置き場所', () => {
     g.state.hand = { kind: 'pizzaPlate' };
     for (const id of COOK_BIN_IDS) {
       const at = COOK_BIN_SPOTS[id];
+      if (at.y !== undefined) continue;
       const z = OVEN_COUNTER_ZS[at.counter] - OVEN_COUNTER_ROW.z + at.zr;
       expect(g.previewProp({ kind: 'tableTop', surface: 'prep', x: at.xr, z }), id).toMatchObject({ valid: false, reason: 'gap' });
     }
   });
 
-  it('冷凍の袋は、左の壁の吊り棚（高さ1.45m、2台目〜3台目の上）に並ぶ', () => {
+  it('壁の吊り棚（高さ1.45m、2台目〜3台目の上）に、ピザ生地・ピザの鉄板・脂取りシートの容器が並ぶ', () => {
     expect(FROZEN_SHELF.y).toBe(1.45);
     const lo = OVEN_COUNTER_ZS[1] - OVEN_COUNTER.depth / 2;
     const hi = OVEN_COUNTER_ZS[2] + OVEN_COUNTER.depth / 2;
-    const spots = FROZEN_BAG_IDS.map((_, i) => frozenBagSpot(i, FROZEN_BAG_IDS.length));
+    const spots = SHELF_PROPS.map((_, i) => frozenBagSpot(i, SHELF_PROPS.length));
     for (const s of spots) {
       expect(s.y).toBe(FROZEN_SHELF.y);
-      expect(s.z - FROZEN_SHELF.bag.w / 2).toBeGreaterThanOrEqual(lo);
-      expect(s.z + FROZEN_SHELF.bag.w / 2).toBeLessThanOrEqual(hi);
-      expect(s.x - FROZEN_SHELF.bag.d / 2).toBeGreaterThan(ROOM_MIN_X); // 壁の内側
+      expect(s.z).toBeGreaterThanOrEqual(lo);
+      expect(s.z).toBeLessThanOrEqual(hi);
+      expect(s.x - FROZEN_SHELF.depth / 2).toBeGreaterThanOrEqual(ROOM_MIN_X); // 壁の内側
       expect(s.x).toBeCloseTo(FROZEN_SHELF_SPAN.x);
     }
-    for (let i = 1; i < spots.length; i++) expect(spots[i].z - spots[i - 1].z).toBeGreaterThan(FROZEN_SHELF.bag.w); // 重ならない
+    for (let i = 1; i < spots.length; i++) expect(spots[i].z - spots[i - 1].z).toBeGreaterThan(0.5); // 鉄板のスタック（直径 0.52）が重ならない広さ
+    // 脂取りシートの容器は、棚の3番目の場所
+    const oil = COOK_BIN_SPOTS.oilSheet;
+    expect(oil.y).toBe(FROZEN_SHELF.y);
+    expect(OVEN_COUNTER.x + oil.xr).toBeCloseTo(FROZEN_SHELF_SPAN.x);
+    expect(OVEN_COUNTER_ZS[oil.counter] + oil.zr).toBeCloseTo(spots[2].z);
+  });
+
+  it('冷凍の袋4つは、2台目の具材台の壁寄りの縁に並び、作業台の置き物に登録されている', () => {
+    for (let i = 0; i < FROZEN_BAG_COUNT; i++) {
+      const at = frozenBagOnCounter(i, FROZEN_BAG_COUNT);
+      const z = OVEN_COUNTER_ZS[FROZEN_BAG_ROW.counter] - OVEN_COUNTER_ROW.z + at.zr;
+      expect(PREP_FIXTURES.some((p) => Math.abs(p.x - at.xr) < 1e-9 && Math.abs(p.z - z) < 1e-9)).toBe(true);
+      expect(Math.abs(at.zr) + FROZEN_SHELF.bag.w / 2).toBeLessThanOrEqual(OVEN_COUNTER.depth / 2);
+      expect(at.xr - FROZEN_SHELF.bag.d / 2).toBeGreaterThanOrEqual(-OVEN_COUNTER.width / 2);
+    }
+    expect(FROZEN_BAG_IDS).toHaveLength(FROZEN_BAG_COUNT);
+    const zs = FROZEN_BAG_IDS.map((_, i) => frozenBagOnCounter(i, FROZEN_BAG_COUNT).zr);
+    for (let i = 1; i < zs.length; i++) expect(zs[i] - zs[i - 1]).toBeGreaterThan(FROZEN_SHELF.bag.w); // 重ならない
   });
 });

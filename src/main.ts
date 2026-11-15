@@ -173,8 +173,8 @@ function hintFor(target: Target | null): string {
     if (p?.valid) return '左クリック：ここに置く';
     if (p?.reason === 'surface') {
       // 作業台に置けるのは、クック用のボトル（グランモラビア・シナモンパウダー・ガーリックソース）だけ。クック用のボトルは、作業台にだけ置ける（bottle.ts）
-      if (BOTTLE_SURFACES[hand.id].includes('prep')) return 'クック用のボトルは、作業台（具材台の天板）にだけ置ける';
-      return p.surface === 'prep' ? 'このボトルは作業台には置けない（作業台に置けるのは、クック用のボトルだけ）' : 'このボトルは、この台には置けない';
+      if (BOTTLE_SURFACES[hand.id].includes('prep')) return 'クック用のボトルは、作業台（具材台の天板）か、壁の棚にだけ置ける';
+      return p.surface === 'prep' || p.surface === 'shelf' ? 'このボトルは作業台・棚には置けない（作業台に置けるのは、クック用のボトルだけ）' : 'このボトルは、この台には置けない';
     }
     if (p) return 'ここには置けない（ほかのボトルに近すぎる）';
     return `右クリック：${BOTTLE_ACTION[hand.id]}（${BOTTLE_PLATE[hand.id] === 'bake' ? '作業枠の焼き物' : '皿'}に視点を合わせて）　左クリック：台の上に置く`;

@@ -22,16 +22,16 @@ export function bottleOfFridgeItem(item: FridgeItemId): FridgeBottleId | null {
 }
 
 // 置ける台。ドレッシング・パプリカパウダー・ガルムソースはサラダ台だけ、パセリとブラックペッパーはどの台にも置ける（作業台は除く）。
-// クック用のボトル（グランモラビア・シナモンパウダー・ガーリックソース）は、作業台（prep）だけ
+// クック用のボトル（グランモラビア・シナモンパウダー・ガーリックソース）は、作業台（prep）と、壁の吊り棚（shelf）だけ
 export const BOTTLE_SURFACES: Record<BottleId, SurfaceId[]> = {
   dressing: ['salad'],
   paprika: ['salad'],
   garum: ['salad'],
   parsley: ['salad', 'left', 'hotWater'],
   blackPepper: ['salad', 'left', 'hotWater'],
-  granMoravia: ['prep'],
-  cinnamon: ['prep'],
-  garlicSauce: ['prep'],
+  granMoravia: ['prep', 'shelf'],
+  cinnamon: ['prep', 'shelf'],
+  garlicSauce: ['prep', 'shelf'],
 };
 
 // かけられる皿。サラダの皿（サラダ台）か、パスタの皿（左の台）か、焼き物だけ（bake = 作業枠の焼き物。クック用のボトル）

@@ -31,7 +31,7 @@ import { createTicket, nextTicketInterval, pickMenu } from './tickets';
 import { tutorialSteps, type GuideAt, type TutorialStep, type TutorialView } from './tutorial';
 import { BOTTLE_ACTION, BOTTLE_BAKE_FINISH, BOTTLE_BAKE_LOAD, BOTTLE_FRIDGE_ITEM, BOTTLE_IDS, BOTTLE_PLATE, BOTTLE_SURFACES, BOTTLE_VERB, bottleOfFridgeItem, isFridgeBottle } from './bottle';
 import { FRIDGE_HOME, FRIDGE_ITEM_IDS, FRIDGE_ITEM_NAME, clampOnShelf, fitsOnShelf, fridgeItemOf, returnToFridge } from './fridge';
-import { BAKE_DISHES, BOTTLE_HOME, OVEN_STOCK_NAME, FREE_TRAY_HOME, GETA, GETA_HOME, GETA_RANGE, PIZZA_COUNTER, PIZZA_PLATE_R, PIZZA_PLATE_STACK, SHELF_STACKS, SURFACES, REST_DISH, TOOL_REST, WORK_FRAMES, overlapsLeftFixture, overlapsPrepFixture, overlapsServePass, flatRange, propRange, toolRestRange } from './layout';
+import { BAKE_DISHES, BOTTLE_HOME, OVEN_STOCK_NAME, FREE_TRAY_HOME, GETA, GETA_HOME, GETA_RANGE, PIZZA_COUNTER, PIZZA_PLATE_R, PIZZA_PLATE_STACK, SHELF_STACKS, SURFACES, REST_DISH, TOOL_REST, WORK_FRAMES, overlapsLeftFixture, overlapsPrepFixture, overlapsServePass, overlapsShelfFixture, flatRange, propRange, toolRestRange } from './layout';
 import { OPEN_WORLD, launchPot, stepThrownPot, type ThrowAim } from './throw';
 import type { World } from './world';
 import { FREE_TRAY_IDS, TRAY_CONTENT, TRAY_FRIDGE_ITEM, TRAY_IDS, TRAY_NAME, TRAY_ZONE, isFreeTray, trayAt, trayOfFridgeItem } from './tray';
@@ -1484,7 +1484,8 @@ export class Game {
       this.toolNear(surface, x, z, 0.06, 0.06) || // 台に置いた道具の上にも置かない
       this.restNear(surface, x, z, 0.06, 0.06) || // 台に置いた器の上にも置かない
       (surface === 'left' && overlapsLeftFixture(x, z, 0.06, 0.06, true)) || // 板・小皿の山の上にも置かない
-      (surface === 'prep' && overlapsPrepFixture(x, z, 0.06)); // 作業台の、作業枠・容器・組み立て台の上にも置かない（クック用のボトル）
+      (surface === 'prep' && overlapsPrepFixture(x, z, 0.06)) || // 作業台の、作業枠・容器・組み立て台の上にも置かない（クック用のボトル）
+      (surface === 'shelf' && overlapsShelfFixture(x, z, 0.06)); // 棚の、ピザ生地・鉄板・容器の上にも置かない
     return tooClose
       ? { id: hand.id, surface, x, z, valid: false, reason: 'gap' }
       : { id: hand.id, surface, x, z, valid: true };
@@ -1503,7 +1504,7 @@ export class Game {
     const halfD = size.depth / 2 - FREE_TRAY_EDGE;
     const x = Math.min(halfW, Math.max(-halfW, target.x));
     const z = Math.min(halfD, Math.max(-halfD, target.z));
-    if (surface === 'prep') return { id, surface, x, z, valid: false, reason: 'surface' }; // 作業台には、ピザの置き物がある。容器はほかの台に置く
+    if (surface === 'prep' || surface === 'shelf') return { id, surface, x, z, valid: false, reason: 'surface' }; // 作業台には、ピザの置き物がある。容器はほかの台に置く
     const tooClose =
       FREE_TRAY_IDS.some((other) => {
         const spot = s.freeTraySpot[other];

@@ -2,11 +2,11 @@ import * as THREE from 'three';
 import type { GameConfig } from './config';
 import { INGREDIENTS } from './ingredients';
 import { BOTTLE_FRIDGE_ITEM, BOTTLE_IDS, bottleOfFridgeItem } from './bottle';
-import { BAKE_DISHES, BOARD, COOK_BIN, COOK_BIN_SPOTS, FROZEN_SHELF, FROZEN_SHELF_SPAN, frozenBagSpot, COOK_SIDE_STACKS, DEV_PIZZA_SHELF, FREE_TRAY_HOME, GETA, HOT_WATER_COUNTER, LAYOUT, LEFT_COUNTER, OVEN, OVEN_BELT, OVEN_COUNTER, OVEN_COUNTER_ROW, OVEN_COUNTER_SHELF, OVEN_COUNTER_ZS, OVEN_STOCK_NAME, OVEN_Z, PIZZA_COUNTER, PIZZA_PLATE_R, PIZZA_PLATE_STACK, PIZZA_TOP_TUBS, ROOM_MIN_X, SERVE_PASS, SHELF_STACKS, SURFACES, REST_DISH, TOOL_HOOKS, TOOL_REST, WALL_HALF, WORK_FRAMES, shelfStackSpot, type Layout } from './layout';
+import { BAKE_DISHES, BOARD, COOK_BIN, COOK_BIN_SPOTS, FROZEN_BAG_ROW, SHELF_ORIGIN, FROZEN_SHELF, FROZEN_SHELF_SPAN, SHELF_PROPS, frozenBagOnCounter, frozenBagSpot, COOK_SIDE_STACKS, DEV_PIZZA_SHELF, FREE_TRAY_HOME, GETA, HOT_WATER_COUNTER, LAYOUT, LEFT_COUNTER, OVEN, OVEN_BELT, OVEN_COUNTER, OVEN_COUNTER_ROW, OVEN_COUNTER_SHELF, OVEN_COUNTER_ZS, OVEN_STOCK_NAME, OVEN_Z, PIZZA_COUNTER, PIZZA_PLATE_R, PIZZA_PLATE_STACK, PIZZA_TOP_TUBS, ROOM_MIN_X, SERVE_PASS, SHELF_STACKS, SURFACES, REST_DISH, TOOL_HOOKS, TOOL_REST, WALL_HALF, WORK_FRAMES, shelfStackSpot, type Layout } from './layout';
 import { PIZZA_TOP_IDS, PIZZA_TOPPING_NAME, isPizzaTop, mozzSpots, pizzaName, pizzaOf, pizzaSignature } from './pizza';
 import { BAKE_STYLES, OVEN_DECKS, OVEN_DECK_NAME, bakeTime, beltSpeed, emergedCount, emergedLabel, isEmerged, laneOfOffset, ovenDishItem, remainingTime } from './oven';
 import { BAKE_VESSELS, CUP_FINISHES, FINISH_SPOT, defaultStock, finishLayout, isSizzling, loadLayout, progressSignature, unpouredCups, viewOf, type LoadSpot } from './bake';
-import { COOK_BINS, COOK_BIN_IDS, FROZEN_BAGS, FROZEN_BAG_IDS, binLabel, binLow } from './cookStock';
+import { COOK_BINS, COOK_BIN_IDS, FROZEN_BAGS, FROZEN_BAG_IDS, bagDisplayName, binLabel, binLow } from './cookStock';
 import { SAUCE_FILL_PER_UNIT, isNoodle } from './pot';
 import { plateLabel, potMonitor, potPopup } from './labels';
 import { Sizzle, Steam, type SteamOptions } from './steam';
@@ -667,10 +667,12 @@ function buildPotMesh(pot: Pot): THREE.Group {
 }
 
 // ボトル（ドレッシング・パプリカパウダー）。高さ約0.2m
-function buildBottle(color: number): THREE.Group {
+// ボトルの口（キャップ）の色。ガーリックソースだけ赤、ほかは白
+const bottleCap = (id: string): number => (id === 'garlicSauce' ? 0xd32f2f : 0xf5f5f5);
+function buildBottle(color: number, cap = 0xf5f5f5): THREE.Group {
   const g = new THREE.Group();
   g.add(cyl(0.035, 0.035, 0.16, color, 0, 0.08, 0)); // 本体
-  g.add(cyl(0.018, 0.022, 0.05, 0xf5f5f5, 0, 0.185, 0)); // 口
+  g.add(cyl(0.018, 0.022, 0.05, cap, 0, 0.185, 0)); // 口（キャップ）
   return g;
 }
 
@@ -1900,7 +1902,7 @@ function buildFrozenBag(id: FrozenBagId, fill = 1): THREE.Group {
   g.add(film);
   g.add(box(B.d * 0.9, 0.02, B.w, 0xf2f4f6, 0, B.h - 0.01, 0));
   // ラベル（品名と屋号のロゴ）
-  const label = new THREE.Mesh(new THREE.PlaneGeometry(B.w * 0.82, B.w * 0.82 * 0.75), new THREE.MeshBasicMaterial({ map: bagLabelTexture(bag.name) }));
+  const label = new THREE.Mesh(new THREE.PlaneGeometry(B.w * 0.82, B.w * 0.82 * 0.75), new THREE.MeshBasicMaterial({ map: bagLabelTexture(bagDisplayName(id)) }));
   label.rotation.y = Math.PI / 2;
   label.position.set(B.d / 2 + 0.002, B.h * 0.62, 0);
   g.add(label);
@@ -2307,41 +2309,25 @@ function buildPizzaTopTub(id: PizzaTop): THREE.Group {
 }
 
 // モッツァレラチーズの容器：上が空いたプラスチックの入れ物（半透明）に、白い丸いモッツァレラがいくつも入っている
-function buildMozzTub(): THREE.Group {
-  const { w, d } = PIZZA_COUNTER.mozz;
-  const h = 0.11;
+function buildMozzBag(): THREE.Group {
+  // 冷凍の袋と同じデザイン：透明の袋に白いモッツァレラが詰まり、上に閉じ口、前にラベル
   const g = new THREE.Group();
-  const plastic = (color: number, opacity: number) =>
-    new THREE.MeshLambertMaterial({ color, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: false });
-  const part = (bw: number, bh: number, bd: number, x: number, y: number, z: number, color: number, opacity: number) => {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), plastic(color, opacity));
-    m.position.set(x, y, z);
-    g.add(m);
-  };
-  part(w, 0.006, d, 0, 0.003, 0, 0xdfeaf2, 0.55); // 底
-  part(w, h, 0.005, 0, h / 2, d / 2, 0xdfeaf2, 0.35); // 4つの壁（半透明）
-  part(w, h, 0.005, 0, h / 2, -d / 2, 0xdfeaf2, 0.35);
-  part(0.005, h, d, w / 2, h / 2, 0, 0xdfeaf2, 0.35);
-  part(0.005, h, d, -w / 2, h / 2, 0, 0xdfeaf2, 0.35);
-  part(w - 0.01, 0.05, d - 0.01, 0, 0.03, 0, 0xe8f0f4, 0.3); // 水分（ブライン）
-  // ふち（上が空いている）
-  part(w + 0.012, 0.01, 0.012, 0, h, d / 2, 0xf0f6fa, 0.85);
-  part(w + 0.012, 0.01, 0.012, 0, h, -d / 2, 0xf0f6fa, 0.85);
-  part(0.012, 0.01, d, w / 2, h, 0, 0xf0f6fa, 0.85);
-  part(0.012, 0.01, d, -w / 2, h, 0, 0xf0f6fa, 0.85);
-  // 白いモッツァレラ：下の段に3×3、その上に4つ
-  for (let ix = -1; ix <= 1; ix++) {
-    for (let iz = -1; iz <= 1; iz++) {
-      const b = buildMozzBall(0.04);
-      b.position.set(ix * 0.08, 0.006 + 0.04, iz * 0.08);
-      g.add(b);
-    }
+  const B = { ...FROZEN_SHELF.bag, h: (FROZEN_SHELF.bag.h * 2) / 3 }; // 冷凍の袋より、高さが1/3低い
+  const rnd = seeded(hashId('bag-mozzarella'));
+  for (let i = 0; i < 22; i++) {
+    const ball = buildMozzBall(0.034);
+    ball.position.set((rnd() - 0.5) * B.d * 0.7, 0.03 + rnd() * B.h * 0.5, (rnd() - 0.5) * B.w * 0.8);
+    g.add(ball);
   }
-  for (const [x, z] of [[-0.04, -0.04], [0.04, -0.04], [-0.04, 0.04], [0.04, 0.04]]) {
-    const b = buildMozzBall(0.04);
-    b.position.set(x, 0.006 + 0.04 + 0.062, z);
-    g.add(b);
-  }
+  const film = new THREE.Mesh(new THREE.BoxGeometry(B.d, B.h, B.w), BAG_FILM);
+  film.position.y = B.h / 2;
+  film.renderOrder = 2;
+  g.add(film);
+  g.add(box(B.d * 0.9, 0.02, B.w, 0xf2f4f6, 0, B.h - 0.01, 0));
+  const label = new THREE.Mesh(new THREE.PlaneGeometry(B.w * 0.82, B.w * 0.82 * 0.75), new THREE.MeshBasicMaterial({ map: bagLabelTexture('モッツァレラチーズ') }));
+  label.rotation.y = Math.PI / 2;
+  label.position.set(B.d / 2 + 0.002, B.h * 0.62, 0);
+  g.add(label);
   return g;
 }
 
@@ -2385,7 +2371,7 @@ function buildItemMesh(item: Item): THREE.Group {
       break;
     }
     case 'bottle':
-      g.add(buildBottle(INGREDIENTS[item.id].color));
+      g.add(buildBottle(INGREDIENTS[item.id].color, bottleCap(item.id)));
       break;
     case 'pack':
       // パックを重ねて持つ。1つずつ、温まったかどうかで袋の色が変わる
@@ -3333,19 +3319,31 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
   {
     const span = FROZEN_SHELF_SPAN.maxZ - FROZEN_SHELF_SPAN.minZ;
     const midZ = (FROZEN_SHELF_SPAN.maxZ + FROZEN_SHELF_SPAN.minZ) / 2;
-    scene.add(box(FROZEN_SHELF.depth, FROZEN_SHELF.thickness, span, 0xd5d9dc, FROZEN_SHELF_SPAN.x, FROZEN_SHELF.y - FROZEN_SHELF.thickness / 2, midZ)); // 棚板（ステンレス）
+    // 棚板（ステンレス）。上の面は、ボトルを置く場所として、視点が合っている点を調べられる（面 'shelf'）
+    const shelfSpot = new THREE.Group();
+    shelfSpot.position.set(SHELF_ORIGIN.x, 0, SHELF_ORIGIN.z);
+    scene.add(shelfSpot);
+    const shelfBoard = box(FROZEN_SHELF.depth, FROZEN_SHELF.thickness, span, 0xd5d9dc, FROZEN_SHELF_SPAN.x, FROZEN_SHELF.y - FROZEN_SHELF.thickness / 2, midZ);
+    setTarget(shelfBoard, { kind: 'tableTop', surface: 'shelf', x: 0, z: 0 });
+    shelfBoard.userData[RESOLVE_KEY] = tableTopResolver('shelf', shelfSpot);
+    scene.add(shelfBoard);
+    interactables.push(shelfBoard);
     for (const k of [-0.45, 0, 0.45]) {
       scene.add(box(FROZEN_SHELF.depth * 0.8, 0.12, 0.02, 0xa9aeb2, FROZEN_SHELF_SPAN.x - FROZEN_SHELF.depth * 0.1, FROZEN_SHELF.y - FROZEN_SHELF.thickness - 0.06, midZ + k * span)); // 支え
     }
+  }
+  // 冷凍の袋（2台目の具材台の壁寄りの縁。layout.ts の FROZEN_BAG_ROW）
+  {
     FROZEN_BAG_IDS.forEach((id, i) => {
-      const at = frozenBagSpot(i, FROZEN_BAG_IDS.length);
+      const at = frozenBagOnCounter(i, FROZEN_BAG_IDS.length);
       const bag = buildFrozenBag(id);
-      bag.position.set(at.x, at.y, at.z);
+      bag.position.set(OVEN_COUNTER.x + at.xr, 0.9, OVEN_COUNTER_ZS[FROZEN_BAG_ROW.counter] + at.zr);
       setTarget(bag, { kind: 'frozenBag', id });
       scene.add(bag);
       interactables.push(bag);
+      // 袋ごとの名前（視点を合わせたときだけ）
+      gateHover(decor(bagDisplayName(id), OVEN_COUNTER.x + at.xr, 0.9 + FROZEN_SHELF.bag.h + 0.1, OVEN_COUNTER_ZS[FROZEN_BAG_ROW.counter] + at.zr, 0.5), { kind: 'frozenBag', id });
     });
-    gateHover(decor('冷凍の袋', FROZEN_SHELF_SPAN.x + 0.1, FROZEN_SHELF.y + FROZEN_SHELF.bag.h + 0.15, midZ, 0.45), (h) => h?.kind === 'frozenBag');
   }
 
   // 具材台の天板のストック容器（layout.ts の COOK_BIN_SPOTS）。数に限りのある容器（ポテト）は、残りの数をラベルに出し、少ないと色を変える
@@ -3357,11 +3355,12 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
     group.add(items);
     const x = OVEN_COUNTER.x + at.xr;
     const z = OVEN_COUNTER_ZS[at.counter] + at.zr;
-    group.position.set(x, 0.9, z);
+    const baseY = at.y ?? 0.9; // 棚に乗る容器は、棚の高さ
+    group.position.set(x, baseY, z);
     setTarget(group, { kind: 'cookBin', id });
     scene.add(group);
     interactables.push(group);
-    const label = gateHover(decor(COOK_BINS[id].name, x, 1.13, z, 0.42), { kind: 'cookBin', id });
+    const label = gateHover(decor(COOK_BINS[id].name, x, baseY + 0.23, z, 0.42), { kind: 'cookBin', id });
     binViews.push({ id, items, fillTop, label, shown: -1 });
   }
 
@@ -3369,8 +3368,8 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
   // 鉄板を置いて組み立てる場所（組み立て台）2つ。位置は layout.ts の PIZZA_COUNTER（2台目の具材台の中心からの相対）
   const PZ = OVEN_COUNTER_ZS[PIZZA_COUNTER.counter];
   const pizzaAt = (xr: number, zr: number) => ({ x: OVEN_COUNTER.x + xr, z: PZ + zr });
-  const addPizzaProp = (group: THREE.Group, at: { x: number; z: number }, target: Target, label: string, labelY = 1.2, labelW = 0.55) => {
-    group.position.set(at.x, 0.9, at.z);
+  const addPizzaProp = (group: THREE.Group, at: { x: number; z: number; y?: number }, target: Target, label: string, labelY = 1.2, labelW = 0.55) => {
+    group.position.set(at.x, at.y ?? 0.9, at.z);
     setTarget(group, target);
     scene.add(group);
     interactables.push(group);
@@ -3384,7 +3383,7 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
     dough.position.y = i * 0.016;
     doughStack.add(dough);
   }
-  addPizzaProp(doughStack, pizzaAt(PIZZA_COUNTER.doughStack.xr, PIZZA_COUNTER.doughStack.zr), { kind: 'pizzaDoughStack' }, 'ピザ生地');
+  addPizzaProp(doughStack, frozenBagSpot(SHELF_PROPS.indexOf('dough'), SHELF_PROPS.length), { kind: 'pizzaDoughStack' }, 'ピザ生地', FROZEN_SHELF.y + 0.3);
   // ピザの鉄板のスタック（複数枚重なっている）
   // 枚数は state.pizzaPanStock（取ると減る）。0枚でも狙えるよう、土台の円を置いておく
   const panStack = new THREE.Group();
@@ -3393,7 +3392,7 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
   panStackItems.position.y = 0.006;
   panStack.add(panStackItems);
   let panStackCount = -1;
-  const panStackLabel = addPizzaProp(panStack, pizzaAt(PIZZA_COUNTER.panStack.xr, PIZZA_COUNTER.panStack.zr), { kind: 'pizzaPanStack' }, 'ピザの鉄板', 1.2, 0.7);
+  const panStackLabel = addPizzaProp(panStack, frozenBagSpot(SHELF_PROPS.indexOf('pan'), SHELF_PROPS.length), { kind: 'pizzaPanStack' }, 'ピザの鉄板', FROZEN_SHELF.y + 0.35, 0.7);
   // 提供台の左の、ピザのお皿の山（左の台の上。なくならない）
   const plateStack = new THREE.Group();
   for (let i = 0; i < PIZZA_PLATE_STACK.count; i++) {
@@ -3425,7 +3424,7 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
   // 容器：ソース（正方形）、チーズ（長方形・奥側に長い）、モッツァレラ（プラスチック）
   addPizzaProp(buildPizzaSauceTub(), pizzaAt(PIZZA_COUNTER.sauce.xr, PIZZA_COUNTER.sauce.zr), { kind: 'pizzaSource', id: 'sauce' }, 'ピザソース', 1.1, 0.5);
   addPizzaProp(buildPizzaCheeseTub(), pizzaAt(PIZZA_COUNTER.cheese.xr, PIZZA_COUNTER.cheese.zr), { kind: 'pizzaSource', id: 'cheese' }, 'ピザチーズ', 1.1, 0.5);
-  addPizzaProp(buildMozzTub(), pizzaAt(PIZZA_COUNTER.mozz.xr, PIZZA_COUNTER.mozz.zr), { kind: 'pizzaSource', id: 'mozzarella' }, 'モッツァレラ', 1.1, 0.5);
+  addPizzaProp(buildMozzBag(), pizzaAt(PIZZA_COUNTER.mozz.xr, PIZZA_COUNTER.mozz.zr), { kind: 'pizzaSource', id: 'mozzarella' }, 'モッツァレラチーズ', 1.25, 0.6);
   // 4番目の具の容器（野菜ときのこ・ソーセージ・コーン）：モッツァレラの隣（layout.ts の PIZZA_TOP_TUBS）
   for (const id of PIZZA_TOP_IDS) {
     const t = PIZZA_TOP_TUBS.spots[id];
@@ -3593,7 +3592,7 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
   // 最初は冷蔵庫にしまってあるボトル（ドレッシング・パプリカパウダー）。取り出すと、台の上に置ける（台の上と同じ大きさ）
   for (const id of Object.keys(BOTTLE_FRIDGE_ITEM) as FridgeBottleId[]) {
     const bottle = new THREE.Group();
-    const mesh = buildBottle(INGREDIENTS[id].color);
+    const mesh = buildBottle(INGREDIENTS[id].color, bottleCap(id));
     mesh.scale.setScalar(1.4);
     bottle.add(mesh);
     addFridgeItem(BOTTLE_FRIDGE_ITEM[id], bottle, { kind: 'fridgeBottle', id });
@@ -3736,7 +3735,8 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
   // 位置は台の中心（surfaceOrigin）に足して、ワールド座標に置く（下のボトルと同じ）
   const hotWaterCounterOrigin = { x: layout.hotWater.x + HOT_WATER_COUNTER.center.x, z: layout.hotWater.z + HOT_WATER_COUNTER.center.z };
   const surfaceOrigin = (surface: SurfaceId) =>
-    surface === 'salad' ? layout.saladTable : surface === 'hotWater' ? hotWaterCounterOrigin : surface === 'prep' ? { x: OVEN_COUNTER.x, z: OVEN_COUNTER_ROW.z } : LEFT_COUNTER;
+    surface === 'salad' ? layout.saladTable : surface === 'hotWater' ? hotWaterCounterOrigin : surface === 'prep' ? { x: OVEN_COUNTER.x, z: OVEN_COUNTER_ROW.z } : surface === 'shelf' ? SHELF_ORIGIN : LEFT_COUNTER;
+  const surfaceY = (surface: SurfaceId) => (surface === 'shelf' ? FROZEN_SHELF.y : 0.9); // 台の天板の高さ
   const freeTrayViews = new Map<FreeTrayId, { group: THREE.Group; label: Label }>();
   for (const id of FREE_TRAY_IDS) {
     const group = new THREE.Group();
@@ -3785,7 +3785,7 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
   const bottleViews = new Map<BottleId, { group: THREE.Group; label: Label }>();
   for (const id of BOTTLE_IDS) {
     const group = new THREE.Group();
-    const mesh = buildBottle(INGREDIENTS[id].color);
+    const mesh = buildBottle(INGREDIENTS[id].color, bottleCap(id));
     mesh.scale.setScalar(BOTTLE_SCALE);
     group.add(mesh);
     setTarget(group, { kind: 'bottle', id });
@@ -3814,7 +3814,7 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
   ghost.add(ghostBin);
   const ghostBottles = new Map<BottleId, THREE.Group>();
   for (const id of BOTTLE_IDS) {
-    const mesh = buildBottle(INGREDIENTS[id].color);
+    const mesh = buildBottle(INGREDIENTS[id].color, bottleCap(id));
     mesh.scale.setScalar(BOTTLE_SCALE);
     mesh.position.y = 0.9;
     mesh.traverse((o) => {
@@ -4070,7 +4070,7 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
   const guidePosition = (at: GuideAt): THREE.Vector3 | null => {
     if (at.kind === 'surfaceSpot') {
       const o = surfaceOrigin(at.surface);
-      return new THREE.Vector3(o.x + at.x, 0.9, o.z + at.z);
+      return new THREE.Vector3(o.x + at.x, surfaceY(at.surface), o.z + at.z);
     }
     const root = interactables.find((r) => r.userData[TARGET_KEY] && matchesTarget(r.userData[TARGET_KEY] as Target, at));
     if (!root) return null;
@@ -4203,11 +4203,12 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
       const v = bottleViews.get(id)!;
       const spot = state.bottles[id];
       v.group.visible = spot !== null;
-      v.label.sprite.visible = spot !== null && (spot.surface !== 'prep' || (hover?.kind === 'bottle' && hover.id === id)); // 作業台のボトルは、視点を合わせたときだけ名前を出す
+      v.label.sprite.visible = spot !== null && (spot.surface === 'left' || spot.surface === 'salad' || spot.surface === 'hotWater' || (hover?.kind === 'bottle' && hover.id === id)); // 作業台・棚のボトルは、視点を合わせたときだけ名前を出す
       if (spot) {
         const o = surfaceOrigin(spot.surface);
-        v.group.position.set(o.x + spot.x, 0.9, o.z + spot.z);
-        v.label.sprite.position.set(o.x + spot.x, 1.3, o.z + spot.z);
+        const y = surfaceY(spot.surface);
+        v.group.position.set(o.x + spot.x, y, o.z + spot.z);
+        v.label.sprite.position.set(o.x + spot.x, y + 0.4, o.z + spot.z);
       }
     }
 
@@ -4344,7 +4345,7 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
     ghost.visible = preview !== null;
     if (preview) {
       const o = surfaceOrigin(preview.surface);
-      ghost.position.set(o.x + preview.x, 0, o.z + preview.z);
+      ghost.position.set(o.x + preview.x, surfaceY(preview.surface) - 0.9, o.z + preview.z); // 棚の上では、棚の高さに合わせる
       (ghostRing.material as THREE.MeshBasicMaterial).color.setHex(preview.valid ? 0x4cd964 : 0xe5484d);
       const isBin = isFreeTray(preview.id);
       for (const id of BOTTLE_IDS) ghostBottles.get(id)!.visible = id === preview.id;

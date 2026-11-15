@@ -21,7 +21,9 @@ export const FROZEN_BAGS: Record<FrozenBagId, FrozenBagDef> = {
   potato: { name: 'ポテト', load: 'frozenPotato', whole: 4 }, // 袋ごと持つ。大きめの焼成パッド4つぶん
   chorizo: { name: 'チョリソー', load: 'sausage' },
 };
-// 吊り棚に並べる順（左 = オーブン側から）
+// 袋に出す名前（ポテトだけ「冷凍」を付ける。案内の文には、name を使う）
+export const bagDisplayName = (id: FrozenBagId): string => (id === 'potato' ? '冷凍ポテト' : FROZEN_BAGS[id].name);
+// 作業台に並べる順（左 = オーブン側から）
 export const FROZEN_BAG_IDS: readonly FrozenBagId[] = ['spicyChicken', 'popcornShrimp', 'potato', 'chorizo'];
 
 // 下調理のストック（数に限りがある）。load = 容器から取る具、start = 最初の数の設定値の名前
