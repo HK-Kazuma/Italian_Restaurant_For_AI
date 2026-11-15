@@ -21,7 +21,7 @@ import {
 import { DEFAULT_CONFIG, PLAY_CONFIG, type GameConfig } from './config';
 import { COOK_BINS, CUP_FILLS } from './cookStock';
 import { Game, describeItem } from './game';
-import { PAN_RESTS, PREP_FIXTURES, OVEN_COUNTER, OVEN_COUNTER_ROW, OVEN_COUNTER_ZS } from './layout';
+import { REST_DISH, SURFACES } from './layout';
 import { LANE_OFFSETS, frontS } from './oven';
 import { menusFor } from './position';
 import { MENU, getMenu } from './recipe';
@@ -61,7 +61,18 @@ type Dish = Extract<Item, { kind: 'bakeDish' }>;
 const pass: Target = { kind: 'servePass' };
 const boardStack: Target = { kind: 'boardStack' };
 const frame = (index: number): Target => ({ kind: 'workFrame', index });
-const rest = (index = 0): Target => ({ kind: 'panRest', index });
+// 台の上に置いた器（いちばん古い1つ）
+const rest = (g: Game): Target => ({ kind: 'restDish', id: g.state.restDishes[0]!.id });
+// 作業台の、器を置ける空いている場所（その手が持っている器を置く位置）。見つからなければ null
+const freeSpot = (g: Game, h: 'left' | 'tongs' = 'left'): Target | null => {
+  for (let x = -0.6; x <= 0.6; x += 0.1) {
+    for (let z = -1.7; z <= 1.7; z += 0.1) {
+      const t: Target = { kind: 'tableTop', surface: 'prep', x, z };
+      if (g.previewRest(h, t)?.valid) return t;
+    }
+  }
+  return null;
+};
 const vessel = (style: BakeStyle): Target => ({ kind: 'vesselStack', style });
 const bag = (id: FrozenBagId): Target => ({ kind: 'frozenBag', id });
 const bin = (id: CookBinId): Target => ({ kind: 'cookBin', id });
@@ -472,18 +483,19 @@ describe('目玉焼き', () => {
     expect(plan.ok && plan.dishes.map((d) => d.id)).toEqual(['friedEgg']);
   });
 
-  it('焼けた目玉焼き鉄板は、出口からやっとこで3台目の置き場へ。置き場の熱い器は素手では持てない。ヘラで置き場からすくえる', () => {
+  it('焼けた目玉焼き鉄板は、出口からやっとこで台の上へ。台の上の熱い器は素手では持てない。ヘラで台の上からすくえる', () => {
     const g = cookGame(hot, ['hamburg']);
     bakeEggs(g);
     useTool(g, hook('tongs'));
     useTool(g, outlet('upper', 0));
-    expect(g.toolHint(rest())).toBe('F：置き場に置く');
-    useTool(g, rest());
-    expect(g.state.panRests[0]).toMatchObject({ style: 'eggPan', state: 'baked', loaded: { egg: 2 } });
-    g.interact(rest());
+    const spot = freeSpot(g, 'tongs')!;
+    expect(g.toolHint(spot)).toBe('F：器をここに置く');
+    useTool(g, spot);
+    expect(g.state.restDishes[0]?.dish).toMatchObject({ style: 'eggPan', state: 'baked', loaded: { egg: 2 } });
+    g.interact(rest(g));
     expect(g.state.hand).toBeNull();
     expect(g.state.toast?.text).toContain('熱い');
-    expect(g.getaHint(rest())).toContain('やっとこでつかむ');
+    expect(g.getaHint(rest(g))).toContain('やっとこでつかむ');
     // 仕上げ中のハンバーグ（板に乗せた最後の段階の焼き上がり）に、置き場からすくってのせる
     startPan(g, 'patty', 0);
     flowRaw(g, 0, 'upper');
@@ -493,8 +505,8 @@ describe('目玉焼き', () => {
     run(g, U + 1);
     boardToFrame(g, 'upper', 0);
     ladle(g, 'demiglace', 0);
-    egg(g, rest(), 0);
-    expect(g.state.panRests[0]?.loaded).toEqual({ egg: 1 });
+    egg(g, rest(g), 0);
+    expect(g.state.restDishes[0]?.dish.loaded).toEqual({ egg: 1 });
     serve(g, 0);
     expect(g.state.served).toBe(1);
   });
@@ -721,28 +733,46 @@ describe('見た目：盛り付けの位置は表から自動で決まる。焼�
 
 // ===================== 置き場 =====================
 
-describe('3台目の焼けた器の置き場', () => {
-  it('3台目の具材台の天板に収まり、作業台の置き物（PREP_FIXTURES）に登録されている', () => {
-    expect(PAN_RESTS.counter).toBe(2);
-    const cz = OVEN_COUNTER_ZS[PAN_RESTS.counter] - OVEN_COUNTER_ROW.z;
-    for (const r of PAN_RESTS.slots) {
-      expect(Math.abs(r.xr) + PAN_RESTS.w / 2).toBeLessThanOrEqual(OVEN_COUNTER.width / 2);
-      expect(Math.abs(r.zr) + PAN_RESTS.d / 2).toBeLessThanOrEqual(OVEN_COUNTER.depth / 2);
-      expect(PREP_FIXTURES.some((f) => f.x === r.xr && f.z === cz + r.zr)).toBe(true);
+describe('台の上に自由に置く器（使い終わった器・焼けた器）', () => {
+  it('冷めた器は左手で作業台に置ける・持ち上げられる。受け台に乗せた器・2列系の器は置けない', () => {
+    const g = cookGame(hot);
+    click(g, vessel('eggPan'));
+    click(g, freeSpot(g)!);
+    expect(g.state.restDishes[0]?.dish).toMatchObject({ style: 'eggPan', blank: true });
+    click(g, rest(g));
+    expect(g.state.hand).toMatchObject({ style: 'eggPan' });
+    expect(g.state.restDishes).toEqual([]);
+    g.state.hand = { kind: 'board' };
+    expect(freeSpot(g)).toBeNull();
+    g.state.hand = null;
+    click(g, vessel('largePad'));
+    expect(freeSpot(g)).toBeNull();
+  });
+
+  it('置いた器の上には、ほかの器を重ねて置けない。置ける位置は、台の上の範囲に収まる', () => {
+    const g = cookGame(hot);
+    click(g, vessel('eggPan'));
+    const first = freeSpot(g)!;
+    click(g, first);
+    click(g, vessel('eggPan'));
+    expect(g.previewRest('left', first)?.valid).toBe(false);
+    expect(g.planInteract(first)).toBeNull();
+    const second = freeSpot(g)!;
+    click(g, second);
+    expect(g.state.restDishes).toHaveLength(2);
+    const [a, b] = g.state.restDishes.map((r) => r.spot);
+    expect(Math.abs(a.x - b.x) >= REST_DISH.w || Math.abs(a.z - b.z) >= REST_DISH.d).toBe(true);
+    for (const r of g.state.restDishes) {
+      expect(Math.abs(r.spot.x) + REST_DISH.w / 2).toBeLessThanOrEqual(SURFACES.prep.width / 2);
+      expect(Math.abs(r.spot.z) + REST_DISH.d / 2).toBeLessThanOrEqual(SURFACES.prep.depth / 2);
     }
   });
 
-  it('冷めた器は左手で置ける・持ち上げられる。受け台に乗せた器・2列系の器は置けない', () => {
+  it('サラダ台には置けない', () => {
     const g = cookGame(hot);
     click(g, vessel('eggPan'));
-    click(g, rest());
-    expect(g.state.panRests[0]).toMatchObject({ style: 'eggPan', blank: true });
-    click(g, rest());
-    expect(g.state.hand).toMatchObject({ style: 'eggPan' });
-    g.state.hand = { kind: 'board' };
-    expect(g.planInteract(rest())).toBeNull();
-    g.state.hand = null;
-    click(g, vessel('largePad'));
-    expect(g.planInteract(rest())).toBeNull();
+    const salad: Target = { kind: 'tableTop', surface: 'salad', x: 0, z: 0 };
+    expect(g.previewRest('left', salad)?.reason).toBe('surface');
+    expect(g.planInteract(salad)).toBeNull();
   });
 });

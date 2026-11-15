@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { GameConfig } from './config';
 import { INGREDIENTS } from './ingredients';
 import { BOTTLE_FRIDGE_ITEM, BOTTLE_IDS, bottleOfFridgeItem } from './bottle';
-import { BAKE_DISHES, BOARD, COOK_BIN, COOK_BIN_SPOTS, FROZEN_SHELF, FROZEN_SHELF_SPAN, frozenBagSpot, COOK_SIDE_STACKS, DEV_PIZZA_SHELF, FREE_TRAY_HOME, GETA, HOT_WATER_COUNTER, LAYOUT, LEFT_COUNTER, OVEN, OVEN_BELT, OVEN_COUNTER, OVEN_COUNTER_ROW, OVEN_COUNTER_SHELF, OVEN_COUNTER_ZS, OVEN_STOCK_NAME, OVEN_Z, PIZZA_COUNTER, PIZZA_PLATE_R, PIZZA_PLATE_STACK, PIZZA_TOP_TUBS, ROOM_MIN_X, SERVE_PASS, SHELF_STACKS, SURFACES, PAN_RESTS, TOOL_HOOKS, WALL_HALF, WORK_FRAMES, shelfStackSpot, type Layout } from './layout';
+import { BAKE_DISHES, BOARD, COOK_BIN, COOK_BIN_SPOTS, FROZEN_SHELF, FROZEN_SHELF_SPAN, frozenBagSpot, COOK_SIDE_STACKS, DEV_PIZZA_SHELF, FREE_TRAY_HOME, GETA, HOT_WATER_COUNTER, LAYOUT, LEFT_COUNTER, OVEN, OVEN_BELT, OVEN_COUNTER, OVEN_COUNTER_ROW, OVEN_COUNTER_SHELF, OVEN_COUNTER_ZS, OVEN_STOCK_NAME, OVEN_Z, PIZZA_COUNTER, PIZZA_PLATE_R, PIZZA_PLATE_STACK, PIZZA_TOP_TUBS, ROOM_MIN_X, SERVE_PASS, SHELF_STACKS, SURFACES, REST_DISH, TOOL_HOOKS, TOOL_REST, WALL_HALF, WORK_FRAMES, shelfStackSpot, type Layout } from './layout';
 import { PIZZA_TOP_IDS, PIZZA_TOPPING_NAME, isPizzaTop, mozzSpots, pizzaName, pizzaOf, pizzaSignature } from './pizza';
 import { BAKE_STYLES, OVEN_DECKS, OVEN_DECK_NAME, bakeTime, beltSpeed, emergedCount, emergedLabel, isEmerged, laneOfOffset, ovenDishItem, remainingTime } from './oven';
 import { BAKE_VESSELS, CUP_FINISHES, FINISH_SPOT, defaultStock, finishLayout, isSizzling, loadLayout, progressSignature, unpouredCups, viewOf, type LoadSpot } from './bake';
@@ -14,7 +14,7 @@ import { matchesTarget, type GuideAt } from './tutorial';
 import { type Rect, type World, rectAt } from './world';
 import { FRIDGE_ITEM_IDS, FRIDGE_ITEM_NAME, FRIDGE_ITEM_SIZE, FRIDGE_SHELF_Y } from './fridge';
 import { FREE_TRAY_IDS, TRAY_FRIDGE_ITEM, TRAY_IDS, TRAY_SPOT_COUNT, TRAY_ZONE, TRAY_ZONE_NAME, freeTraySpots, isFreeTray, trayAt, trayContentName, trayOfFridgeItem } from './tray';
-import type { BakeFinishId, BakeLoad, BakeLoadId, CookBinId, CupFill, FrozenBagId, BakeState, BakeStyle, Boiler, BottleId, FreeTrayId, FridgeBottleId, FridgeItemId, FridgePreview, FridgeShelf, FridgeUnit, NoodleKind, OvenDeck, TrayId, TrayZone, BottlePreview, GetaPreview, OvenPreview, GameState, IngredientId, Item, PizzaBuild, PizzaTop, PizzaTopping, PlateDish, PropPreview, Pot, SurfaceId, Target, ToolId } from './types';
+import type { BakeFinishId, BakeLoad, BakeLoadId, CookBinId, CupFill, FrozenBagId, BakeState, BakeStyle, Boiler, BottleId, FreeTrayId, FridgeBottleId, FridgeItemId, FridgePreview, FridgeShelf, FridgeUnit, NoodleKind, OvenDeck, TrayId, TrayZone, BottlePreview, GetaPreview, OvenPreview, GameState, IngredientId, Item, PizzaBuild, PizzaTop, PizzaTopping, PlateDish, PropPreview, Pot, SurfaceId, Target, RestPreview, ToolId, ToolPreview } from './types';
 
 // 厨房の3Dシーン。見た目はすべてプリミティブ（箱・円柱）で作るローポリのプレースホルダー。
 // ゲームの状態は読むだけ（sync）で、ここからは state を書き換えない。
@@ -37,7 +37,8 @@ export type Kitchen = {
   // ovenPreview: 手に持った焼き皿を、ジェットオーブンの入口のベルトに置こうとしている場所（置く前の見せ方）。なければ null
   // getaPreview: 持ち上げた下駄の山を、台の上に置こうとしている場所（置く前の見せ方）。なければ null
   // propPreview: 手に持ったピザのお皿・鉄板（の山）を、台の上に置こうとしている場所（置く前の見せ方）。なければ null
-  sync: (state: GameState, dt: number, preview?: BottlePreview | null, fridgePreview?: FridgePreview | null, hover?: Target | null, ovenPreview?: OvenPreview | null, getaPreview?: GetaPreview | null, propPreview?: PropPreview | null) => void;
+  // toolPreview: 手に持った空の道具を、台の上にべた置きしようとしている場所（置く前の見せ方）。なければ null
+  sync: (state: GameState, dt: number, preview?: BottlePreview | null, fridgePreview?: FridgePreview | null, hover?: Target | null, ovenPreview?: OvenPreview | null, getaPreview?: GetaPreview | null, propPreview?: PropPreview | null, toolPreview?: ToolPreview | null, restPreview?: RestPreview | null) => void;
 };
 
 export const TARGET_KEY = 'target';
@@ -3221,25 +3222,17 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
   });
   decor('作業枠', OVEN_COUNTER.x + WORK_FRAMES.slots[0].xr, 1.35, OVEN_COUNTER_ZS[WORK_FRAMES.counter], 0.4);
 
-  // 3台目の具材台の、焼けた器の置き場（layout.ts の PAN_RESTS。クック編 C7）：作業枠と同じ形の印。置いた器は state.panRests の通りに表示する
-  const panRestViews: ItemView[] = [];
-  const panRestSizzles: Sizzle[] = [];
-  PAN_RESTS.slots.forEach((r, i) => {
-    const rest = new THREE.Group();
-    rest.position.set(OVEN_COUNTER.x + r.xr, 0.9, OVEN_COUNTER_ZS[PAN_RESTS.counter] + r.zr);
-    rest.add(box(PAN_RESTS.w, 0.006, PAN_RESTS.d, 0x5b5f64, 0, 0.003, 0)); // 置き場の印（熱い器を置く、金属の板）
-    for (const sz of [-1, 1]) rest.add(box(PAN_RESTS.w, 0.012, 0.012, 0x3c4045, 0, 0.006, (sz * PAN_RESTS.d) / 2));
-    for (const sx of [-1, 1]) rest.add(box(0.012, 0.012, PAN_RESTS.d, 0x3c4045, (sx * PAN_RESTS.w) / 2, 0.006, 0));
-    const content = new THREE.Group();
-    content.position.y = 0.006;
-    rest.add(content);
-    setTarget(rest, { kind: 'panRest', index: i });
-    scene.add(rest);
-    interactables.push(rest);
-    panRestViews.push(new ItemView(content));
-    panRestSizzles.push(addSizzle(content));
-    decor('焼けた器の置き場', OVEN_COUNTER.x + r.xr, 1.2, OVEN_COUNTER_ZS[PAN_RESTS.counter] + r.zr, 0.45);
-  });
+  // 台の上に置いた器（作業台・提供台のまわり。クック編 C7）：置くたびに作り、取ったら片づける（state.restDishes の通りに表示する）。
+  // 狙える当たり判定は、器の大きさの見えない箱
+  type RestView = { root: THREE.Group; view: ItemView; sizzle: Sizzle };
+  const restViews = new Map<number, RestView>();
+  // 器を置く前の見せ方（置き場所の印）
+  const restGhost = new THREE.Mesh(
+    new THREE.BoxGeometry(REST_DISH.w, 0.01, REST_DISH.d),
+    new THREE.MeshBasicMaterial({ color: 0x4cd964, transparent: true, opacity: 0.6, depthWrite: false }),
+  );
+  restGhost.visible = false;
+  scene.add(restGhost);
 
   // 道具のフック（1台目の具材台の、部屋の中央側の縁。layout.ts の TOOL_HOOKS）：やっとこ・ヘラが先を下にして掛かっている。
   // 手に持っている道具は、フックから消える（フックは見えない当たり判定で狙える。F で戻す・持ち替える）
@@ -3263,6 +3256,34 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
     interactables.push(hook);
   });
   decor('やっとこ・ヘラ（F）', TOOL_HOOKS.x + 0.05, 1.08, OVEN_COUNTER_ZS[TOOL_HOOKS.counter] + (TOOL_HOOKS.zr.tongs + TOOL_HOOKS.zr.spatula) / 2, 0.42);
+
+  // 台の上にべた置きした道具（GameState.toolSpots）。長い辺を z 方向に寝かせ、中心を置き場所に合わせる。置いていない間は見せない
+  const placedTools = {} as Record<ToolId, THREE.Group>;
+  (['tongs', 'spatula'] as const).forEach((id) => {
+    const root = new THREE.Group();
+    const tool = id === 'tongs' ? buildTongs().root : buildSpatula().root;
+    // 道具の長い辺は、もともと z 方向。90度回して、x 方向（プレイヤーから見て縦向き。先が奥、持ち手が手前）に寝かせる
+    tool.position.set(0, id === 'tongs' ? 0.008 : 0.01, TOOL_REST.w / 2 - 0.02);
+    const pivot = new THREE.Group();
+    pivot.rotation.y = Math.PI / 2;
+    pivot.add(tool);
+    root.add(pivot);
+    const hitbox = new THREE.Mesh(new THREE.BoxGeometry(TOOL_REST.w, 0.04, TOOL_REST.d), new THREE.MeshLambertMaterial({ visible: false }));
+    hitbox.position.y = 0.02;
+    root.add(hitbox);
+    root.visible = false;
+    setTarget(root, { kind: 'placedTool', id });
+    scene.add(root);
+    interactables.push(root);
+    placedTools[id] = root;
+  });
+  // 道具を置く前の見せ方（置き場所の印）
+  const toolGhost = new THREE.Mesh(
+    new THREE.BoxGeometry(TOOL_REST.w, 0.01, TOOL_REST.d),
+    new THREE.MeshBasicMaterial({ color: 0x4cd964, transparent: true, opacity: 0.6, depthWrite: false }),
+  );
+  toolGhost.visible = false;
+  scene.add(toolGhost);
 
   // 冷凍の袋の吊り棚（具材台の上の、左の壁。layout.ts の FROZEN_SHELF）。棚板・支えは視線の判定に入れない。袋だけを interactables に入れる
   potatoPiecesPerPortion = cfg.potatoPerLargePad;
@@ -3922,7 +3943,7 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
     handSpatula.root.visible = t?.kind === 'spatula';
     handSpatula.egg.visible = t?.kind === 'spatula' && t.scoop !== null;
     tongsView.show(t?.kind === 'tongs' ? t.dish : null);
-    for (const id of ['tongs', 'spatula'] as const) hookTools[id].visible = t?.kind !== id;
+    for (const id of ['tongs', 'spatula'] as const) hookTools[id].visible = t?.kind !== id && !state.toolSpots[id];
     // 道具を持っている間は、左手の物を左下に寄せる（持っていなければ、今までどおり右下）
     HAND_POS = t ? HAND_POS_LEFT : HAND_POS_RIGHT;
     HAND_ROT = t ? HAND_ROT_LEFT : HAND_ROT_RIGHT;
@@ -4031,8 +4052,62 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
     ovenPreview: OvenPreview | null = null,
     getaPreview: GetaPreview | null = null,
     propPreview: PropPreview | null = null,
+    toolPreview: ToolPreview | null = null,
+    restPreview: RestPreview | null = null,
   ) => {
     const follow = Math.min(1, dt * 8);
+
+    // 台の上にべた置きした道具と、置く前の印
+    for (const id of ['tongs', 'spatula'] as const) {
+      const spot = state.toolSpots[id];
+      placedTools[id].visible = spot !== null;
+      if (spot) {
+        const o = surfaceOrigin(spot.surface);
+        placedTools[id].position.set(o.x + spot.x, 0.9, o.z + spot.z);
+      }
+    }
+    toolGhost.visible = toolPreview !== null && toolPreview.reason !== 'surface';
+    if (toolPreview) {
+      const o = surfaceOrigin(toolPreview.surface);
+      toolGhost.position.set(o.x + toolPreview.x, 0.905, o.z + toolPreview.z);
+      (toolGhost.material as THREE.MeshBasicMaterial).color.setHex(toolPreview.valid ? 0x4cd964 : 0xe5484d);
+    }
+    restGhost.visible = restPreview !== null && restPreview.reason !== 'surface';
+    if (restPreview) {
+      const o = surfaceOrigin(restPreview.surface);
+      restGhost.position.set(o.x + restPreview.x, 0.905, o.z + restPreview.z);
+      (restGhost.material as THREE.MeshBasicMaterial).color.setHex(restPreview.valid ? 0x4cd964 : 0xe5484d);
+    }
+
+    // 台の上に置いた器（取ったら片づける）
+    const liveRests = new Set<number>();
+    for (const r of state.restDishes) {
+      liveRests.add(r.id);
+      let v = restViews.get(r.id);
+      if (!v) {
+        const root = new THREE.Group();
+        const content = new THREE.Group();
+        root.add(content);
+        const hitbox = new THREE.Mesh(new THREE.BoxGeometry(REST_DISH.w, 0.08, REST_DISH.d), new THREE.MeshLambertMaterial({ visible: false }));
+        hitbox.position.y = 0.04;
+        root.add(hitbox);
+        setTarget(root, { kind: 'restDish', id: r.id });
+        scene.add(root);
+        interactables.push(root);
+        v = { root, view: new ItemView(content), sizzle: addSizzle(content) };
+        restViews.set(r.id, v);
+      }
+      v.view.show(r.dish);
+      const o = surfaceOrigin(r.spot.surface);
+      v.root.position.set(o.x + r.spot.x, 0.9, o.z + r.spot.z);
+    }
+    for (const [id, v] of restViews) {
+      if (liveRests.has(id)) continue;
+      v.view.show(null);
+      scene.remove(v.root);
+      interactables.splice(interactables.indexOf(v.root), 1);
+      restViews.delete(id);
+    }
 
     for (const unit of FRIDGE_UNITS) {
       const { left, right } = fridgeDoors[unit];
@@ -4182,14 +4257,12 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
     });
     // 作業枠に置いた物
     workFrameViews.forEach((v, i) => v.show(state.workFrames[i] ?? null));
-    // 3台目の焼けた器の置き場（クック編 C7）
-    panRestViews.forEach((v, i) => v.show(state.panRests[i] ?? null));
     // 油のはねる粒（作業枠・置き場・左手・やっとこの器。一時停止中は止める）
     {
       const sdt = state.phase === 'playing' ? dt : 0;
       const level = (item: Item | null) => (isSizzling(item, state.time, cfg) ? 1 : 0);
       workFrameSizzles.forEach((z, i) => z.update(sdt, level(state.workFrames[i] ?? null)));
-      panRestSizzles.forEach((z, i) => z.update(sdt, level(state.panRests[i] ?? null)));
+      for (const r of state.restDishes) restViews.get(r.id)?.sizzle.update(sdt, level(r.dish));
       handSizzle.update(sdt, level(state.hand));
       tongsSizzle.update(sdt, level(state.tool?.kind === 'tongs' ? state.tool.dish : null));
     }

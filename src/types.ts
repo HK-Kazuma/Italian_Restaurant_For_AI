@@ -293,7 +293,13 @@ export type OvenPreview = { deck: OvenDeck; style: BakeStyle; x: number; s: numb
 
 // 下駄の山を置き直そうとしたときの様子（置く前の見せ方に使う）。x, z は台の中心からの相対位置。
 // valid = false のとき、reason は置けない理由（gap: ボトル・容器に近すぎる、surface: この台には置けない）
-export type GetaPreview = { surface: SurfaceId; x: number; z: number; valid: boolean; reason?: 'gap' | 'surface' };
+// 手に持った道具を、台の上にべた置きしようとしている場所（置く前の見せ方）
+export type ToolPreview = { id: ToolId; surface: SurfaceId; x: number; z: number; valid: boolean; reason?: 'gap' | 'surface' };
+// 台の上に自由に置いた器（3列系で、受け台に乗せていない物）
+export type RestDish = { id: number; spot: TableSpot; dish: Extract<Item, { kind: 'bakeDish' }> };
+// 手に持った器を、台の上に置こうとしている場所（置く前の見せ方）
+export type RestPreview = { surface: SurfaceId; x: number; z: number; valid: boolean; reason?: 'gap' | 'surface' };
+export type GetaPreview ={ surface: SurfaceId; x: number; z: number; valid: boolean; reason?: 'gap' | 'surface' };
 
 // 伝票の担当。pasta = パスタ台、salad = サラダ台、cook = クック（ジェットオーブンの焼き物：ドリア・ピザ）
 export type Station = 'pasta' | 'salad' | 'cook';
@@ -374,8 +380,9 @@ export type Target =
   | { kind: 'ipadWall' } // 後ろの壁にかかっている iPad（練習中だけ。左クリックで手に取る・壁に戻す）
   | { kind: 'frozenBag'; id: FrozenBagId } // 具材台の上の壁の吊り棚の、冷凍の袋（左クリックで取る。なくならない）
   | { kind: 'cookBin'; id: CookBinId } // 具材台の天板のストック容器（左クリックで1つ取る。ポテトは下調理したパッドを空ける）
-  | { kind: 'panRest'; index: number } // 3台目の具材台の、焼けた器の置き場（目玉焼き鉄板など、ヘラですくう物が残った器を置いておく。クック編 C7）
-  | { kind: 'toolHook'; id: ToolId }; // 1台目の具材台の縁の、道具のフック（F で道具を取る・戻す・持ち替える。クック編 C4）
+  | { kind: 'restDish'; id: number } // 作業台・提供台のまわりに置いた、使い終わった器・焼けた器（目玉焼き鉄板など、ヘラですくう物が残った器もここに置いておく。GameState.restDishes）
+  | { kind: 'toolHook'; id: ToolId } // 1台目の具材台の縁の、道具のフック（F で道具を取る・戻す・持ち替える。クック編 C4）
+  | { kind: 'placedTool'; id: ToolId }; // 台の上にべた置きした道具（F で取る・持ち替える。GameState.toolSpots）
 
 // ready = ゲーム開始前の操作説明（クリックで始まる。時間は進まない）
 // --- 道具の手（クック編設計書 4.4 / C4）---
@@ -407,7 +414,8 @@ export type GameState = {
   tutorial: TutorialProgress | null; // チュートリアル中（練習キッチンで、選んだメニューを作り方の案内つきで作る）。なければ null
   time: number; // 経過時間（秒）
   hand: Item | null; // 左手（今までの手。左クリックで操作する）
-  tool: ToolHand | null; // 道具の手（やっとこ・ヘラだけ。F で操作する。null = 道具を持っていない = 両方ともフックに掛かっている）
+  tool: ToolHand | null; // 道具の手（やっとこ・ヘラだけ。F で操作する。null = 道具を持っていない）
+  toolSpots: Record<ToolId, TableSpot | null>; // 手に持っていない道具の置き場所。null = フックに掛かっている、それ以外 = 台の上にべた置き（作業台・提供台のまわり）
   boilers: Boiler[];
   plateSlots: (IngredientId[] | null)[]; // 皿の置き場。左の台（plateSlotCount 個）→ サラダ台（saladSlotCount 個）の順。null = 皿なし
   plateStyles: PlateStyle[]; // plateSlots と同じ並び。置いてある皿の種類
@@ -424,7 +432,7 @@ export type GameState = {
   getaSpot: TableSpot; // 下駄の山の置き場所（提供台の左）
   getaMoving: boolean; // 下駄の山を右クリックで持ち上げている最中（手とは別。台に右クリックで置く）
   prepStock: Record<PrepStockId, number>; // 下調理のストックの数（ポテト。最初は config の potatoStockStart。取ると減る（トライアルは減らない）、下調理したパッドを空けると増える）
-  panRests: (Extract<Item, { kind: 'bakeDish' }> | null)[]; // 3台目の具材台の、焼けた器の置き場（layout.ts の PAN_RESTS。クック編 C7）。置いてある器、null = 空き
+  restDishes: RestDish[]; // 台の上に自由に置いた、使い終わった器・焼けた器（作業台・提供台のまわり。クック編 C7）
   workFrames: (WorkFrameItem | null)[]; // 1台目の具材台の作業枠（3つ。layout.ts の WORK_FRAMES）。置いてある物、null = 空き
   bottles: Record<BottleId, BottleSpot>; // 台の上のボトル
   bottleShakeAt: number | null; // 手に持ったボトルを最後に振った（かけた）ゲーム内時刻。振る動きの表示に使う

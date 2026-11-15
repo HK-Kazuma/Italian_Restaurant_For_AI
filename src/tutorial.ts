@@ -715,7 +715,7 @@ function makeKit(menu: MenuItem, cfg: GameConfig) {
     };
     // 手・やっとこ・作業枠・3台目の置き場の物（ベルトの上は別に見る）
     const around = (s: GameState): Item[] =>
-      [s.hand, s.tool?.kind === 'tongs' ? s.tool.dish : null, ...s.workFrames, ...s.panRests].filter((x): x is Item => x !== null && x !== undefined);
+      [s.hand, s.tool?.kind === 'tongs' ? s.tool.dish : null, ...s.workFrames, ...s.restDishes.map((r) => r.dish)].filter((x): x is Item => x !== null && x !== undefined);
     // いちばん先まで進んだ器の段（提供済みなら Infinity）
     const level = (s: GameState): number => {
       if (s.served > 0) return Infinity;
@@ -878,7 +878,7 @@ function makeKit(menu: MenuItem, cfg: GameConfig) {
   const sideOutSteps = (side: BakeDish, sidePlan: TablePlan, st: Track, used: (s: GameState) => boolean): TutorialStep[] => {
     const deck = sidePlan.stages[sidePlan.stages.length - 1].deck;
     const name = BAKE_DISHES[side.vessel].name;
-    const placed = (s: GameState) => s.workFrames.some((f) => st.mine(f) && scoopOf(f) !== null) || s.panRests.some((f) => st.mine(f) && scoopOf(f) !== null);
+    const placed = (s: GameState) => s.workFrames.some((f) => st.mine(f) && scoopOf(f) !== null) || s.restDishes.some((r) => st.mine(r.dish) && scoopOf(r.dish) !== null);
     const beyond = (s: GameState) => placed(s) || used(s);
     const wait = waitBake(side.vessel, deck, beyond);
     return [
@@ -1051,8 +1051,8 @@ function makeKit(menu: MenuItem, cfg: GameConfig) {
         const sideSpot = (s: GameState): Target | null => {
           const i = s.workFrames.findIndex((f) => st.mine(f) && scoopOf(f)?.finish === finish);
           if (i >= 0) return frameAt(i);
-          const r = s.panRests.findIndex((f) => st.mine(f) && scoopOf(f)?.finish === finish);
-          return r >= 0 ? { kind: 'panRest', index: r } : null;
+          const r = s.restDishes.find((d) => st.mine(d.dish) && scoopOf(d.dish)?.finish === finish);
+          return r ? { kind: 'restDish', id: r.id } : null;
         };
         steps.push({
           label: `ヘラ（F）で${fname}を1つすくって、作業枠の料理にのせる`,
@@ -1060,7 +1060,7 @@ function makeKit(menu: MenuItem, cfg: GameConfig) {
             const tool = s.tool;
             if (tool?.kind === 'spatula' && tool.scoop === finish) return onFrame(s);
             if (tool?.kind === 'spatula' && tool.scoop === null) return sideSpot(s) ?? onFrame(s);
-            return { kind: 'toolHook', id: 'spatula' };
+            return s.toolSpots.spatula ? { kind: 'placedTool', id: 'spatula' } : { kind: 'toolHook', id: 'spatula' };
           },
           done: (s) => enough(s) || s.served > 0,
           hint: (s) => {
@@ -1068,6 +1068,7 @@ function makeKit(menu: MenuItem, cfg: GameConfig) {
             if (tool?.kind === 'spatula' && tool.scoop === finish) return '作業枠の料理に視点を合わせて、F でのせる';
             if (tool?.kind === 'spatula' && tool.scoop === null) return `作業枠の${sideName}に視点を合わせて、F で1つすくう`;
             if (tool?.kind === 'tongs' && tool.dish) return 'やっとこの器を置いてから（F）、ヘラに持ち替える';
+            if (s.toolSpots.spatula) return '台の上に置いたヘラに視点を合わせて、F で取る';
             return '1台目の具材台の縁のフックのヘラに視点を合わせて、F で取る';
           },
         });

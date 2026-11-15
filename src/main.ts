@@ -275,7 +275,7 @@ function frame(): void {
   player.applyTo(camera);
   if (game.state.phase === 'playing' && !game.state.ipadOpen) interactor.update(game);
   else interactor.clear();
-  kitchen.sync(game.state, dt, game.previewPlacement(interactor.current), game.previewFridge(interactor.current), interactor.current, game.previewOven(interactor.current), game.previewGeta(interactor.current), game.previewProp(interactor.current));
+  kitchen.sync(game.state, dt, game.previewPlacement(interactor.current), game.previewFridge(interactor.current), interactor.current, game.previewOven(interactor.current), game.previewGeta(interactor.current), game.previewProp(interactor.current), game.previewTool(interactor.current), game.previewRest('left', interactor.current) ?? game.previewRest('tongs', interactor.current));
   const tutorial = tutorialGuide();
   // 十字の下の案内：左クリック（ほか）の案内と、F（道具の手）の案内を2行で出す
   const toolHint = game.state.phase === 'playing' ? game.toolHint(interactor.current) : '';

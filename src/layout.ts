@@ -414,16 +414,9 @@ export const COOK_BIN_SPOTS: Record<CookBinId, { counter: number; xr: number; zr
   tarakoSauce: { counter: 0, xr: -0.02, zr: 0.34 },
 };
 
-// 3台目の具材台の、焼けた器の置き場（クック編 C7。仮：1か所）。目玉焼き鉄板など、ヘラですくう物が残った器を置いておく（作業枠を空けるため）。
-// 部屋の中央側の縁（作業枠と同じ向き）の、まん中の列に置く。天板のまん中と、部屋の中央側の壁寄りの角は、お皿・鉄板の山を置けるように空けておく。
-// 置けるのは3列系の器（受け台には乗せていない物）。w・d は置き場の印の大きさ（3列系の器より、ひと回り大きい）
-const PAN_REST_W = BAKE_SERIES.three.w + 0.06;
-export const PAN_RESTS = {
-  counter: 2,
-  w: PAN_REST_W,
-  d: BAKE_SERIES.three.d + 0.06,
-  slots: [{ xr: OVEN_COUNTER.width / 2 - 0.03 - PAN_REST_W / 2, zr: -0.12 }], // ピザの具の容器の列（オーブン側の縁）と、壁寄りの角（お皿・鉄板の山の置き場）のあいだ
-};
+// 台の上に自由に置く、使い終わった器・焼けた器（クック編 C7。以前の「焼けた器の置き場」の代わり）。3列系の器（受け台に乗せていない物）の大きさ。
+// 長い辺を x 方向（作業枠と同じ向き）に置く。置ける台は、道具と同じ（toolRestRange の説明）
+export const REST_DISH = { w: BAKE_SERIES.three.w, d: BAKE_SERIES.three.d };
 
 // クック用のボトルの最初の置き場所（1台目の具材台の、壁側の縁。具材台の中心からの相対 zr）。BOTTLE_HOME の z は、作業台の中心からの相対に直して入れる
 const COOK_BOTTLE_ROW = { counter: 0, zr: 0.44 };
@@ -446,8 +439,6 @@ export const PREP_FIXTURES: readonly { x: number; z: number; hx: number; hz: num
   ...WORK_FRAMES.slots.map((f) => ({ x: f.xr, z: counterZ(WORK_FRAMES.counter) + f.zr, hx: WORK_FRAMES.w / 2, hz: WORK_FRAMES.d / 2 })),
   // ストック容器（クック編 C5）
   ...Object.values(COOK_BIN_SPOTS).map((b) => ({ x: b.xr, z: counterZ(b.counter) + b.zr, hx: COOK_BIN.w / 2, hz: COOK_BIN.d / 2 })),
-  // 焼けた器の置き場（クック編 C7）
-  ...PAN_RESTS.slots.map((r) => ({ x: r.xr, z: counterZ(PAN_RESTS.counter) + r.zr, hx: PAN_RESTS.w / 2, hz: PAN_RESTS.d / 2 })),
 ];
 
 // ピザのお皿・鉄板（の山）を置ける台と、その範囲。置けない台（サラダ台・湯煎器の台）は null
@@ -455,7 +446,34 @@ export function propRange(surface: SurfaceId): typeof PROP_RANGE | null {
   return surface === 'left' ? PROP_RANGE : surface === 'prep' ? PROP_RANGE_PREP : null;
 }
 
-// 作業台（prep）の、もとから置いてある物に、半径 r の丸い物（中心が x, z）が重なるか
-export function overlapsPrepFixture(x: number, z: number, r: number): boolean {
-  return PREP_FIXTURES.some((f) => Math.abs(f.x - x) < f.hx + r && Math.abs(f.z - z) < f.hz + r);
+// 作業台（prep）の、もとから置いてある物に、半径 r の丸い物（中心が x, z）が重なるか。hz を渡すと、半分の大きさ (r, hz) の長方形として調べる
+export function overlapsPrepFixture(x: number, z: number, r: number, hz = r): boolean {
+  return PREP_FIXTURES.some((f) => Math.abs(f.x - x) < f.hx + r && Math.abs(f.z - z) < f.hz + hz);
+}
+
+// 台の上にべた置きした道具（やっとこ・ヘラ）。上から見た大きさ（w = x 方向、d = z 方向。長い辺を x 方向（プレイヤーから見て縦向き）に寝かせる）。
+// 置ける台は、作業台（prep。3台の具材台の天板のどこでも）と、左の台の提供台のまわり（提供台の奥の端より壁側。皿・トッピングの置き場には重ならない）
+export const TOOL_REST = { w: 0.36, d: 0.1 };
+const TOOL_EDGE = 0.02; // 台の縁からのすき間
+export function toolRestRange(surface: SurfaceId): { minX: number; maxX: number; minZ: number; maxZ: number } | null {
+  return flatRange(surface, TOOL_REST.w / 2, TOOL_REST.d / 2);
+}
+// 半分の大きさ (hx, hz) の長方形の中心を置ける範囲（台の中心からの相対）。置けない台は null
+export function flatRange(surface: SurfaceId, halfW: number, halfD: number): { minX: number; maxX: number; minZ: number; maxZ: number } | null {
+  const hx = halfW + TOOL_EDGE;
+  const hz = halfD + TOOL_EDGE;
+  if (surface === 'prep') return { minX: -SURFACES.prep.width / 2 + hx, maxX: SURFACES.prep.width / 2 - hx, minZ: -SURFACES.prep.depth / 2 + hz, maxZ: SURFACES.prep.depth / 2 - hz };
+  if (surface === 'left') {
+    return {
+      minX: -SURFACES.left.width / 2 + hx,
+      maxX: SURFACES.left.width / 2 - hx,
+      minZ: SERVE_PASS.z - SERVE_PASS.size / 2 - LEFT_COUNTER.z + halfD,
+      maxZ: SURFACES.left.depth / 2 - hz,
+    };
+  }
+  return null;
+}
+// 左の台の提供台に、半分の大きさ (hx, hz) の長方形（中心が x, z。左の台の中心からの相対）が重なるか
+export function overlapsServePass(x: number, z: number, hx: number, hz: number): boolean {
+  return Math.abs(SERVE_PASS.x - LEFT_COUNTER.x - x) < SERVE_PASS.size / 2 + hx && Math.abs(SERVE_PASS.z - LEFT_COUNTER.z - z) < SERVE_PASS.size / 2 + hz;
 }

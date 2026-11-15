@@ -570,3 +570,64 @@ describe('F でできることがある物だけが光り、F を押すとその
     }
   });
 });
+
+describe('道具を台の上にべた置きする（作業台・提供台のまわり）', () => {
+  const prepTop: Target = { kind: 'tableTop', surface: 'prep', x: 0, z: 1.2 };
+  const leftTop: Target = { kind: 'tableTop', surface: 'left', x: 0.5, z: 1.7 };
+  const placed = (id: 'tongs' | 'spatula'): Target => ({ kind: 'placedTool', id });
+
+  it('空の道具を作業台に置き、台から取り直し、フックに戻せる', () => {
+    const g = game(cfg);
+    g.useTool(hook('spatula'));
+    expect(g.planTool(prepTop)?.label).toBe('ヘラをここに置く');
+    g.useTool(prepTop);
+    expect(g.state.tool).toBeNull();
+    expect(g.state.toolSpots.spatula).toEqual({ surface: 'prep', x: 0, z: 1.2 });
+    // フックは空：取れない（台の上にあると案内する）
+    expect(g.planTool(hook('spatula'))).toBeNull();
+    expect(g.toolHint(hook('spatula'))).toBe('ヘラは台の上に置いてある');
+    g.useTool(placed('spatula'));
+    expect(g.state.tool).toEqual({ kind: 'spatula', scoop: null });
+    expect(g.state.toolSpots.spatula).toBeNull();
+    g.useTool(hook('spatula'));
+    expect(g.state.tool).toBeNull();
+  });
+
+  it('提供台のまわりの台にも置ける。台に置いた道具に、別の空の道具で持ち替えると、持っていた道具がそこに残る', () => {
+    const g = game(cfg);
+    g.useTool(hook('tongs'));
+    g.useTool(leftTop);
+    expect(g.state.toolSpots.tongs).toEqual({ surface: 'left', x: 0.5, z: 1.7 });
+    g.useTool(hook('spatula'));
+    g.useTool(placed('tongs'));
+    expect(g.state.tool?.kind).toBe('tongs');
+    expect(g.state.toolSpots).toEqual({ tongs: null, spatula: { surface: 'left', x: 0.5, z: 1.7 } });
+  });
+
+  it('置けない場所・置けない状態', () => {
+    const g = game(cfg);
+    g.useTool(hook('tongs'));
+    expect(g.previewTool({ kind: 'tableTop', surface: 'salad', x: 0, z: 0 })?.reason).toBe('surface');
+    expect(g.planTool({ kind: 'tableTop', surface: 'salad', x: 0, z: 0 })).toBeNull();
+    expect(g.previewTool({ kind: 'tableTop', surface: 'left', x: 0.2, z: 0.45 })?.reason).toBe('gap'); // 提供台の上
+    // 作業枠の上には置けない
+    const f = WORK_FRAMES.slots[0];
+    expect(g.previewTool({ kind: 'tableTop', surface: 'prep', x: f.xr, z: OVEN_COUNTER_ZS[0] - OVEN_COUNTER_ZS[1] + f.zr })?.valid).toBe(false);
+    // つかんだ器があるうちは置けない
+    g.interact(doriaStock);
+    g.state.tool = { kind: 'tongs', dish: g.state.hand as Extract<Item, { kind: 'bakeDish' }> };
+    g.state.hand = null;
+    expect(g.previewTool(prepTop)).toBeNull();
+    expect(g.planTool(prepTop)?.label).toBe('器をここに置く'); // 道具は置けないが、つかんだ器は置ける
+  });
+
+  it('置いた道具の上には、ほかの道具・ピザのお皿を重ねて置けない', () => {
+    const g = game(cfg);
+    g.useTool(hook('tongs'));
+    g.useTool(prepTop);
+    g.useTool(hook('spatula'));
+    expect(g.previewTool(prepTop)?.valid).toBe(false);
+    g.interact({ kind: 'pizzaPlateStack' });
+    expect(g.previewProp(prepTop)?.valid).toBe(false);
+  });
+});
