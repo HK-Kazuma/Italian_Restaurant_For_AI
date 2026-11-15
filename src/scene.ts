@@ -1428,7 +1428,21 @@ function buildVessel(
       g.add(line);
     }
   }
-  const top = loaded ? addLoadPieces(g, loaded, w, d, 0.012, state, `vessel-${style}`, spots) : 0.012;
+  // 目玉焼き鉄板：割った卵は、黒い丸いくぼみ（2つ）の中に、白身と黄身の目玉焼きとして乗せる
+  let eggTop = 0;
+  if (style === 'eggPan' && loaded?.egg) {
+    const r = Math.min(size.w / 4, size.d / 2) - 0.02; // くぼみの半径（buildEggPan と同じ）
+    const rnd = seeded(hashId(`eggpan:${loaded.egg}:${state}`));
+    for (let i = 0; i < Math.min(loaded.egg, 2); i++) {
+      const egg = buildLoadPiece('egg', state, rnd);
+      egg.scale.set((r * 0.92) / 0.05, 1, (r * 0.92) / 0.05); // 白身がくぼみいっぱいに広がる（卵の白身の半径は 0.05）
+      egg.position.set(((i === 0 ? -1 : 1) * size.w) / 4, size.h + 0.006, 0);
+      g.add(egg);
+    }
+    eggTop = size.h + 0.016;
+    loaded = { ...loaded, egg: 0 };
+  }
+  const top = loaded ? Math.max(eggTop, addLoadPieces(g, loaded, w, d, 0.012, state, `vessel-${style}`, spots)) : eggTop || 0.012;
   if (finishes.length) addBakeFinishes(g, finishes, finishSpots, w, d, top, `vessel-${style}`);
   return g;
 }
@@ -1786,9 +1800,28 @@ function addLoadPieces(g: THREE.Object3D, loaded: BakeLoad, w: number, d: number
 }
 
 // 重ねて持った具（手の上に小さく盛る）
+// 割る前の卵（殻付き）。手に持っている間の見た目（器に入ると、割った卵になる）
+function buildShellEgg(): THREE.Mesh {
+  const e = new THREE.Mesh(new THREE.SphereGeometry(0.03, 12, 10), mat(0xf4ead8));
+  e.scale.set(1, 1.25, 1);
+  return e;
+}
+
 function buildLoadHeap(id: BakeLoadId, count: number): THREE.Group {
   const g = new THREE.Group();
   g.add(cyl(0.11, 0.09, 0.012, 0xc9ced3, 0, 0.006, 0)); // 受けの小さなステンレスの皿
+  if (id === 'egg') {
+    // 卵は、殻のまま皿に寝かせて持つ（左クリックで、器の上で割って落とす）
+    const spots: [number, number][] = [[-0.04, -0.035], [0.04, -0.035], [-0.04, 0.045], [0.04, 0.045], [0, 0.005], [0, -0.07]];
+    for (let i = 0; i < Math.min(count, spots.length); i++) {
+      const e = buildShellEgg();
+      e.rotation.z = Math.PI / 2; // 横に寝かせる
+      e.rotation.y = i * 0.7;
+      e.position.set(spots[i][0], 0.012 + 0.03, spots[i][1]);
+      g.add(e);
+    }
+    return g;
+  }
   addLoadPieces(g, { [id]: count }, 0.15, 0.15, 0.012, 'raw', `heap-${id}`);
   return g;
 }
@@ -3231,8 +3264,6 @@ export function createKitchen(cfg: GameConfig, layout: Layout = LAYOUT): Kitchen
     workFrameSizzles.push(addSizzle(content));
   };
   WORK_FRAMES.slots.forEach((f, i) => addWorkFrame(i, OVEN_COUNTER.x + f.xr, OVEN_COUNTER_ZS[WORK_FRAMES.counter] + f.zr));
-  // 提供台側の左の台の作業枠（具材台の3つのあとの番号）
-  WORK_FRAMES.leftSlots.forEach((f, k) => addWorkFrame(WORK_FRAMES.slots.length + k, LEFT_COUNTER.x + f.x, LEFT_COUNTER.z + f.z));
 
   // 台の上に置いた器（作業台・提供台のまわり。クック編 C7）：置くたびに作り、取ったら片づける（state.restDishes の通りに表示する）。
   // 狙える当たり判定は、器の大きさの見えない箱

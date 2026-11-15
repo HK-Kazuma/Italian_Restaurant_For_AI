@@ -171,7 +171,7 @@ export class Game {
       getaSpot: { ...(layout?.getaSpot ?? GETA_HOME) },
       getaMoving: false,
       prepStock: initialPrepStock(this.cfg), // 下調理のストック（ポテト）。チュートリアルも、この十分な数から始まる
-      workFrames: [...WORK_FRAMES.slots, ...WORK_FRAMES.leftSlots].map(() => null),
+      workFrames: WORK_FRAMES.slots.map(() => null),
       restDishes: [], // 台の上に置いた使い終わった器（クック編 C7）。毎回、空から
       // 引き継ぎがなければ、冷蔵庫にしまってあるボトル（null）以外は、もとの場所の台の上
       bottles: Object.fromEntries(
@@ -1976,9 +1976,11 @@ export class Game {
         if (isPourHand(hand)) {
           const poured = frame.kind === 'bakeDish' ? pourInto(frame, hand) : null;
           if (!poured) return null;
+          const cracked = hand.kind === 'loadStack' && hand.id === 'egg' ? poured.moved : 0;
           return () => {
             s.workFrames[target.index] = poured.dish;
             s.hand = poured.hand;
+            if (cracked > 0) this.say(`卵を割って${cracked}つ落とした`, 'info');
           };
         }
         return this.planHeldOnFrame('left', target.index)?.run ?? null;

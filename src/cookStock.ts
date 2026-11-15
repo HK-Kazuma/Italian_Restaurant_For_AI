@@ -184,7 +184,8 @@ export function pourHint(dish: BakeDishItem, hand: PourHand): string {
   const name = BAKE_LOAD_NAME[pourLoadOf(hand)].name;
   if (hand.kind === 'sauceCup') return `左クリック：${name}を鉄板の空きにのせる`;
   if (hand.kind === 'frozenBag') return `左クリック：${FROZEN_BAGS[hand.id].name}の袋の1/${FROZEN_BAGS[hand.id].whole ?? 1}を入れる（袋の残り${hand.left - 1}回分）`;
-  const left = r.hand ? `左クリック：${name}を${r.moved}つ入れる（入りきらない${hand.count - r.moved}つは手に残る）` : `左クリック：${name}を${r.moved}つ入れる`;
+  const verb = hand.kind === 'loadStack' && hand.id === 'egg' ? '割って落とす' : '入れる'; // 卵は、殻を割って中身を落とす
+  const left = r.hand ? `左クリック：${name}を${r.moved}つ${verb}（入りきらない${hand.count - r.moved}つは手に残る）` : `左クリック：${name}を${r.moved}つ${verb}`;
   return flip ? `${left}（ふつうの向き）${right}` : left;
 }
 
