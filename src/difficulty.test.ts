@@ -84,7 +84,9 @@ describe('Game: 難易度', () => {
       g.update(0.001);
       for (const t of g.state.tickets) seen.add(t.menuId);
     }
-    expect(seen.size).toBe(MENU.length - 6);
+    // トライアルの1段階限定による（2026-11-16 承認）：クック25品のうち §4.10 の10品だけが出るため、
+    // さらにクック15品が出ない。出るのはヒート9品（15品 − 手順の多い6品）＋クック10品＝19品
+    expect(seen.size).toBe(MENU.length - 6 - 15);
     for (const id of ['peperoncino', 'carbonara', 'penne', 'mushroomCream', 'shrimpCocktail', 'steamedChicken']) expect(seen.has(id)).toBe(false);
   });
 

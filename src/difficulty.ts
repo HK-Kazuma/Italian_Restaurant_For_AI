@@ -43,7 +43,11 @@ export const DIFFICULTIES: readonly DifficultyDef[] = [
     tickets: { firstTicketAt: 5, ticketIntervalStart: 40, ticketIntervalEnd: 25, ticketIntervalJitter: 0.15, maxOpenTickets: 3 },
     stock: { prepStockConsume: false }, // 下調理したポテトのストックが減らない
     tools: { hotHandling: false }, // 熱い器も素手（左クリック）で取れる。ヘラの「はがす」は、手が空のとき左クリック
-    menuWeights: { tarako: 3, meat: 2, parma: 2, spinach: 1, shrimpSalad: 2, chickenSalad: 2, cornSoup: 2, peperoncino: 0, carbonara: 0, penne: 0, squidInk: 1, mushroomCream: 0, wakameSalad: 2, shrimpCocktail: 0, steamedChicken: 0, milanoDoria: 3, buffaloPizza: 1 },
+    menuWeights: { tarako: 3, meat: 2, parma: 2, spinach: 1, shrimpSalad: 2, chickenSalad: 2, cornSoup: 2, peperoncino: 0, carbonara: 0, penne: 0, squidInk: 1, mushroomCream: 0, wakameSalad: 2, shrimpCocktail: 0, steamedChicken: 0, milanoDoria: 3, buffaloPizza: 1,
+      // クック編 C10：1段階で終わる品だけ（§4.10 の並びが正。表の stages.length では引かない）。ミラノドリア・バッファローピザは上の値のまま
+      cheeseMilanoDoria: 1, tarakoDoria: 1, tarakoGratin: 1, focaccia: 1, cinnamonFocaccia: 1, garlicFocaccia: 1, popcornShrimp: 1, spicyChicken: 1 },
+    // クックの分類は 0（上の menuWeights に書いた10品だけが出る）。ヒートの分類は触らない
+    categoryWeights: { doriaGratin: 0, pizza: 0, cookStarter: 0, bread: 0, meat: 0, cookSoup: 0 },
   },
   {
     id: 'leading',

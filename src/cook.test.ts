@@ -318,11 +318,14 @@ describe('ポジション：届く伝票の絞り込み', () => {
     return counts;
   };
 
+  const TRIAL_COOK_IDS = ['milanoDoria', 'cheeseMilanoDoria', 'tarakoDoria', 'tarakoGratin', 'buffaloPizza', 'focaccia', 'cinnamonFocaccia', 'garlicFocaccia', 'popcornShrimp', 'spicyChicken'];
   for (const d of DIFFICULTIES) {
     it(`${d.name}：クックではパスタ・サラダの伝票が1枚も出ず、ヒートでは焼き物の伝票が出ない`, () => {
       const cook = collect(d.id, 'cook');
       // C3 の6品を有効化（2026-11-14）したため、クックの伝票は8品。C6 の9品を登録（ステップH）したため17品
-      expect([...cook.keys()].sort()).toEqual([...COOK_IDS].sort());
+      // トライアルは §4.10 の「1段階で終わる品」10品だけ（2026-11-16 承認）
+      const expected = d.id === 'trial' ? TRIAL_COOK_IDS : COOK_IDS;
+      expect([...cook.keys()].sort()).toEqual([...expected].sort());
       const heat = collect(d.id, 'heat');
       for (const id of heat.keys()) expect(getMenu(id).station).not.toBe('cook');
       expect(heat.size).toBeGreaterThan(0);
